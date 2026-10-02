@@ -1,0 +1,30 @@
+{
+  "name": "adverse-hoardings-platform",
+  "version": "1.0.0",
+  "description": "Multi-tenant OOH Hoarding Rental & Management Platform for West Bengal",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client-web"
+  ],
+  "scripts": {
+    "start": "node server/src/server.js",
+    "seed": "node server/src/seed.js",
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix client-web run dev",
+    "dev:mobile": "npm --prefix client-mobile start",
+    "test:server": "npm --prefix server test",
+    "build:web": "npm --prefix client-web run build"
+  },
+  "keywords": [
+    "hoarding",
+    "billboard",
+    "advertising",
+    "west-bengal",
+    "mern",
+    "react-native",
+    "expo"
+  ],
+  "author": "",
+  "license": "ISC"
+}
