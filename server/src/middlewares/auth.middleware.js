@@ -57,7 +57,18 @@ const authorizeRoles = (...roles) => {
   };
 };
 
+const requireApprovedSeller = (req, res, next) => {
+  if (req.user && req.user.role === 'seller' && req.user.status !== 'active') {
+    return res.status(403).json({
+      success: false,
+      message: 'Your seller profile is currently awaiting Super Admin approval. You will be allowed to enlist hoardings once verified.'
+    });
+  }
+  next();
+};
+
 module.exports = {
   verifyToken,
-  authorizeRoles
+  authorizeRoles,
+  requireApprovedSeller
 };

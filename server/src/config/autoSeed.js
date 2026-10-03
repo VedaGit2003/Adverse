@@ -274,6 +274,21 @@ const autoSeed = async () => {
         }
       });
       console.log('✅ Auto-seeded active sample booking ADV-BK-2026-0001 with verified payment.');
+    } else {
+      // For existing database: ensure primary demo seller is active and any unverified seller is pending_verification
+      await User.updateOne({ email: 'seller@bengalmedia.com' }, { $set: { status: 'active' } });
+      await User.updateMany(
+        {
+          role: 'seller',
+          email: { $ne: 'seller@bengalmedia.com' },
+          $or: [
+            { status: { $exists: false } },
+            { status: null },
+            { 'companyDetails.gstNumber': 'Unregistered' }
+          ]
+        },
+        { $set: { status: 'pending_verification' } }
+      );
     }
   } catch (error) {
     console.warn('⚠️ Auto-seed notice:', error.message);

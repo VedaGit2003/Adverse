@@ -61,6 +61,24 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('adverse_user');
   };
 
+  const refreshUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      if (res.data?.user) {
+        setUser(res.data.user);
+        localStorage.setItem('adverse_user', JSON.stringify(res.data.user));
+        return res.data.user;
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const updateUser = (userData) => {
+    setUser(userData);
+    localStorage.setItem('adverse_user', JSON.stringify(userData));
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -70,6 +88,8 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        refreshUser,
+        updateUser,
         isAuthenticated: !!user,
         isAdmin: user?.role === 'admin',
         isSeller: user?.role === 'seller',

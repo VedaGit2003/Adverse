@@ -23,11 +23,15 @@ import {
   Power,
   Image as ImageIcon,
   Check,
-  Search
+  Search,
+  ShieldCheck,
+  ShieldAlert,
+  Lock,
+  FileText
 } from 'lucide-react';
 
 export default function SellerDashboardPage() {
-  const { user } = useAuth();
+  const { user, updateUser, refreshUser } = useAuth();
   const [hoardings, setHoardings] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -42,6 +46,16 @@ export default function SellerDashboardPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editHoardingModal, setEditHoardingModal] = useState(null);
   const [photoManagerModal, setPhotoManagerModal] = useState(null);
+  const [showBusinessProfileModal, setShowBusinessProfileModal] = useState(false);
+  const [businessProfileLoading, setBusinessProfileLoading] = useState(false);
+  const [businessForm, setBusinessForm] = useState({
+    companyName: '',
+    gstNumber: '',
+    tradeLicense: '',
+    address: '',
+    name: '',
+    phone: ''
+  });
 
   // Form states for Add / Edit
   const [formLoading, setFormLoading] = useState(false);
@@ -370,6 +384,54 @@ export default function SellerDashboardPage() {
     }
   };
 
+  // Approval status check
+  const isApprovedSeller = user?.status === 'active';
+
+  // Initialize Business Profile Form
+  const initBusinessProfileForm = () => {
+    setBusinessForm({
+      companyName: user?.companyDetails?.companyName || '',
+      gstNumber:
+        user?.companyDetails?.gstNumber && user.companyDetails.gstNumber !== 'Unregistered'
+          ? user.companyDetails.gstNumber
+          : '',
+      tradeLicense: user?.companyDetails?.tradeLicense || '',
+      address: user?.companyDetails?.address || '',
+      name: user?.name || '',
+      phone: user?.phone || ''
+    });
+  };
+
+  // Submit Updated Business Profile
+  const handleSaveBusinessProfile = async (e) => {
+    e.preventDefault();
+    setBusinessProfileLoading(true);
+    try {
+      const res = await api.put('/auth/profile', {
+        name: businessForm.name,
+        phone: businessForm.phone,
+        companyDetails: {
+          companyName: businessForm.companyName,
+          gstNumber: businessForm.gstNumber || 'Unregistered',
+          tradeLicense: businessForm.tradeLicense,
+          address: businessForm.address
+        }
+      });
+
+      if (res.data.success) {
+        if (updateUser) updateUser(res.data.user);
+        if (refreshUser) await refreshUser();
+        showToast('Business details updated successfully! Super Admin will review your profile credentials.');
+        setShowBusinessProfileModal(false);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to update business profile.', 'error');
+    } finally {
+      setBusinessProfileLoading(false);
+    }
+  };
+
   // Filtered Hoardings for Seller
   const filteredHoardings = hoardings.filter((h) => {
     const matchesSearch =
@@ -479,13 +541,128 @@ export default function SellerDashboardPage() {
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
             <button
-              onClick={() => setShowAddModal(true)}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-xs transition-all flex items-center justify-center gap-2"
+              onClick={() => {
+                if (!isApprovedSeller) {
+                  showToast(
+                    'Super Admin verification required before enlisting new hoardings. Please complete or verify your business details.',
+                    'error'
+                  );
+                  initBusinessProfileForm();
+                  setShowBusinessProfileModal(true);
+                  return;
+                }
+                setShowAddModal(true);
+              }}
+              className={`px-5 py-2.5 font-bold text-sm rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 ${
+                isApprovedSeller
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  : 'bg-slate-200 hover:bg-slate-300 text-slate-600 border border-slate-300'
+              }`}
+              title={
+                isApprovedSeller
+                  ? 'Enlist New Hoarding'
+                  : 'Super Admin approval required before enlisting hoarding sites'
+              }
             >
-              <PlusCircle className="w-4 h-4" /> Enlist New Hoarding
+              {isApprovedSeller ? <PlusCircle className="w-4 h-4" /> : <Lock className="w-4 h-4 text-amber-600" />}
+              <span>Enlist New Hoarding</span>
+              {!isApprovedSeller && (
+                <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wider font-extrabold ml-1">
+                  Locked
+                </span>
+              )}
             </button>
           </div>
         </div>
+
+        {/* ============================================================== */}
+        {/* SELLER VERIFICATION STATUS BANNER & ONBOARDING PROMPT */}
+        {/* ============================================================== */}
+        {!isApprovedSeller ? (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200/90 rounded-3xl p-6 shadow-sm">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 shrink-0">
+                  <Clock className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-amber-200 text-amber-900">
+                      Pending Admin Verification
+                    </span>
+                    <span className="text-xs text-amber-800 font-semibold">• Profile Waiting For Approval</span>
+                  </div>
+                  <h2 className="text-lg font-black text-slate-900 mt-1">
+                    Agency Onboarding & Verification In Progress
+                  </h2>
+                  <p className="text-xs text-slate-600 max-w-2xl mt-0.5">
+                    Your media owner account is currently waiting for Super Admin accreditation. Only verified sellers can enlist hoardings on the Adverse platform. Please verify or update your legal details below.
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-slate-700 font-medium">
+                    <span className="flex items-center gap-1.5 bg-white/80 border border-amber-200 px-2.5 py-1 rounded-lg">
+                      <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                      <strong>Agency:</strong> {user?.companyDetails?.companyName || user?.name || 'Not set'}
+                    </span>
+                    <span className="flex items-center gap-1.5 bg-white/80 border border-amber-200 px-2.5 py-1 rounded-lg">
+                      <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                      <strong>GST:</strong>{' '}
+                      <span className={user?.companyDetails?.gstNumber && user.companyDetails.gstNumber !== 'Unregistered' ? 'font-mono font-bold text-slate-800' : 'text-amber-700 italic'}>
+                        {user?.companyDetails?.gstNumber || 'Unregistered'}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1.5 bg-white/80 border border-amber-200 px-2.5 py-1 rounded-lg">
+                      <FileText className="w-3.5 h-3.5 text-slate-500" />
+                      <strong>Trade License:</strong>{' '}
+                      <span className={user?.companyDetails?.tradeLicense ? 'font-mono font-bold text-slate-800' : 'text-slate-400 italic'}>
+                        {user?.companyDetails?.tradeLicense || 'Pending'}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="shrink-0 flex items-center gap-2 w-full lg:w-auto">
+                <button
+                  onClick={() => {
+                    initBusinessProfileForm();
+                    setShowBusinessProfileModal(true);
+                  }}
+                  className="w-full lg:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>Update Business / Legal Details</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-emerald-900 flex items-center gap-2">
+                  <span>Verified & Accredited Media Owner</span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full uppercase font-black">Authorized</span>
+                </div>
+                <p className="text-[11px] text-emerald-700 mt-0.5">
+                  {user?.companyDetails?.companyName || user?.name} • GST: {user?.companyDetails?.gstNumber || 'Active'} • Hoarding enlistment and booking management active.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                initBusinessProfileForm();
+                setShowBusinessProfileModal(true);
+              }}
+              className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline shrink-0"
+            >
+              Update Business Profile
+            </button>
+          </div>
+        )}
 
         {/* Global Key Stats Bar */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1504,6 +1681,140 @@ export default function SellerDashboardPage() {
                   className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-xs transition"
                 >
                   {formLoading ? 'Publishing...' : 'Publish Hoarding'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* SELLER ONBOARDING & BUSINESS PROFILE MODAL */}
+      {/* ============================================================== */}
+      {showBusinessProfileModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            {/* Close Button */}
+            <button
+              onClick={() => setShowBusinessProfileModal(false)}
+              className="absolute right-5 top-5 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">
+                Seller Onboarding
+              </span>
+              <span className="text-xs text-slate-400">• Business Accreditation</span>
+            </div>
+            <h3 className="text-xl font-black text-slate-900">
+              Agency & Legal Credentials
+            </h3>
+            <p className="text-xs text-slate-500 mb-5">
+              These details are verified by the Adverse Super Admin before granting permission to publish hoarding sites.
+            </p>
+
+            <form onSubmit={handleSaveBusinessProfile} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Agency / Legal Business Name *
+                </label>
+                <div className="relative">
+                  <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Bengal Media Networks LLP"
+                    value={businessForm.companyName}
+                    onChange={(e) => setBusinessForm({ ...businessForm, companyName: e.target.value })}
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    GST Number (GSTIN)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 19AAACA1234A1Z5"
+                    value={businessForm.gstNumber}
+                    onChange={(e) => setBusinessForm({ ...businessForm, gstNumber: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Trade License Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TL-KOL-2026-99"
+                    value={businessForm.tradeLicense}
+                    onChange={(e) => setBusinessForm({ ...businessForm, tradeLicense: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Registered Office Address
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Camac Street, Kolkata, West Bengal - 700016"
+                  value={businessForm.address}
+                  onChange={(e) => setBusinessForm({ ...businessForm, address: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Authorized Representative Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Subhashish Das"
+                    value={businessForm.name}
+                    onChange={(e) => setBusinessForm({ ...businessForm, name: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Contact Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="9830000000"
+                    value={businessForm.phone}
+                    onChange={(e) => setBusinessForm({ ...businessForm, phone: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBusinessProfileModal(false)}
+                  className="px-4 py-2.5 border border-slate-200 text-slate-600 font-bold text-sm rounded-xl hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={businessProfileLoading}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-xs transition"
+                >
+                  {businessProfileLoading ? 'Saving...' : 'Save & Submit Details'}
                 </button>
               </div>
             </form>

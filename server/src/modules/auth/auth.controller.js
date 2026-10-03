@@ -23,6 +23,7 @@ exports.register = async (req, res, next) => {
       phone,
       passwordHash: password,
       role: assignedRole,
+      status: assignedRole === 'seller' ? 'pending_verification' : 'active',
       companyDetails: companyDetails || {}
     });
 
@@ -30,7 +31,9 @@ exports.register = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: 'Account created successfully.',
+      message: assignedRole === 'seller'
+        ? 'Seller account created! Your profile is pending Admin approval before you can enlist hoardings.'
+        : 'Account created successfully.',
       token,
       user: {
         id: user._id,
@@ -38,6 +41,7 @@ exports.register = async (req, res, next) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
+        status: user.status,
         companyDetails: user.companyDetails
       }
     });

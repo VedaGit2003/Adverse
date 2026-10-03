@@ -6,7 +6,8 @@ const {
   getBookingsAdmin, 
   getUsers, 
   getSellersAdmin, 
-  moderateHoarding 
+  moderateHoarding,
+  moderateSellerStatus
 } = require('./admin.controller');
 const { verifyToken, authorizeRoles } = require('../../middlewares/auth.middleware');
 
@@ -19,5 +20,6 @@ router.get('/bookings', getBookingsAdmin);
 router.get('/users', getUsers);
 router.get('/sellers', getSellersAdmin);
 router.put('/hoardings/:id/approve', moderateHoarding);
+router.put('/sellers/:id/status', moderateSellerStatus);
 
 module.exports = router;

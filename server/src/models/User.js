@@ -40,7 +40,9 @@ const UserSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ['active', 'pending_verification', 'suspended'],
-      default: 'active'
+      default: function () {
+        return this.role === 'seller' ? 'pending_verification' : 'active';
+      }
     },
     companyDetails: {
       companyName: { type: String, default: '' },

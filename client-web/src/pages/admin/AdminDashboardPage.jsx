@@ -53,6 +53,8 @@ export default function AdminDashboardPage() {
   // Sellers tab state
   const [sellers, setSellers] = useState([]);
   const [sellerSearch, setSellerSearch] = useState('');
+  const [sellerStatusFilter, setSellerStatusFilter] = useState('all'); // 'all' | 'pending' | 'active'
+  const [moderatingSellerId, setModeratingSellerId] = useState(null);
 
   // Toast / notification
   const [notification, setNotification] = useState(null);
@@ -125,6 +127,34 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Moderate Seller Approval Status (Active vs Pending Verification)
+  const handleModerateSeller = async (sellerId, targetStatus) => {
+    setModeratingSellerId(sellerId);
+    try {
+      const res = await api.put(`/admin/sellers/${sellerId}/status`, {
+        status: targetStatus
+      });
+
+      if (res.data.success) {
+        setSellers((prev) =>
+          prev.map((s) => (s._id === sellerId ? { ...s, status: targetStatus } : s))
+        );
+        showToast(
+          targetStatus === 'active'
+            ? 'Seller approved successfully! They are now authorized to enlist hoardings.'
+            : 'Seller placed on pending verification hold.'
+        );
+        // Refresh metrics in background
+        api.get('/admin/metrics').then((r) => setMetrics(r.data.metrics));
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to update seller status.', 'error');
+    } finally {
+      setModeratingSellerId(null);
+    }
+  };
+
   // Filtered Hoardings
   const filteredHoardings = hoardings.filter((h) => {
     const matchesSearch =
@@ -182,15 +212,24 @@ export default function AdminDashboardPage() {
 
   // Filtered Sellers
   const filteredSellers = sellers.filter((s) => {
-    if (!sellerSearch) return true;
     const term = sellerSearch.toLowerCase();
-    return (
+    const matchesSearch =
+      !sellerSearch ||
       s.name?.toLowerCase().includes(term) ||
       s.email?.toLowerCase().includes(term) ||
       s.phone?.toLowerCase().includes(term) ||
       s.companyDetails?.companyName?.toLowerCase().includes(term) ||
-      s.companyDetails?.gstNumber?.toLowerCase().includes(term)
-    );
+      s.companyDetails?.gstNumber?.toLowerCase().includes(term);
+
+    const isPending = s.status !== 'active';
+    const matchesStatus =
+      sellerStatusFilter === 'all'
+        ? true
+        : sellerStatusFilter === 'pending'
+        ? isPending
+        : s.status === 'active';
+
+    return matchesSearch && matchesStatus;
   });
 
   const activeBookingsCount = bookings.filter((b) => ['active', 'confirmed'].includes(b.bookingStatus)).length;
@@ -988,8 +1027,9 @@ export default function AdminDashboardPage() {
         {/* ============================================================== */}
         {activeTab === 'sellers' && (
           <div className="space-y-4">
-            {/* Search Bar */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
+            {/* Search and Status Filters */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+              {/* Search Bar */}
               <div className="relative flex-1 w-full">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                 <input
@@ -1000,8 +1040,41 @@ export default function AdminDashboardPage() {
                   className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
                 />
               </div>
-              <div className="text-xs font-semibold text-slate-500">
-                Registered Media Owners: <span className="text-slate-900 font-bold">{sellers.length}</span>
+
+              {/* Status Filter Tabs */}
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0 w-full sm:w-auto">
+                <button
+                  onClick={() => setSellerStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    sellerStatusFilter === 'all'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All ({sellers.length})
+                </button>
+                <button
+                  onClick={() => setSellerStatusFilter('pending')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                    sellerStatusFilter === 'pending'
+                      ? 'bg-white text-amber-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  Pending Approval ({sellers.filter((s) => s.status !== 'active').length})
+                </button>
+                <button
+                  onClick={() => setSellerStatusFilter('active')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                    sellerStatusFilter === 'active'
+                      ? 'bg-white text-emerald-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  Approved ({sellers.filter((s) => s.status === 'active').length})
+                </button>
               </div>
             </div>
 
@@ -1017,7 +1090,7 @@ export default function AdminDashboardPage() {
                       <th className="py-3.5 px-4 text-center">Hoardings Listed</th>
                       <th className="py-3.5 px-4 text-center">Bookings Received</th>
                       <th className="py-3.5 px-4">Total Earnings</th>
-                      <th className="py-3.5 px-4 text-right">Status</th>
+                      <th className="py-3.5 px-4 text-right">Verification & Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm">
@@ -1093,12 +1166,42 @@ export default function AdminDashboardPage() {
                             ₹{(s.totalEarned || 0).toLocaleString('en-IN')}
                           </td>
 
-                          {/* Status */}
+                          {/* Status & Moderation Action */}
                           <td className="py-4 px-4 text-right whitespace-nowrap">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                              Verified
-                            </span>
+                            <div className="flex flex-col items-end gap-1.5">
+                              {s.status === 'active' ? (
+                                <>
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                    Approved & Verified
+                                  </span>
+                                  <button
+                                    onClick={() => handleModerateSeller(s._id, 'pending_verification')}
+                                    disabled={moderatingSellerId === s._id}
+                                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-0.5 rounded border border-rose-200 transition"
+                                    title="Revoke approval and pause seller enlistment privileges"
+                                  >
+                                    {moderatingSellerId === s._id ? 'Updating...' : 'Revoke Approval'}
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                    Pending Approval
+                                  </span>
+                                  <button
+                                    onClick={() => handleModerateSeller(s._id, 'active')}
+                                    disabled={moderatingSellerId === s._id}
+                                    className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 transition"
+                                    title="Approve seller to allow enlisting hoardings"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    {moderatingSellerId === s._id ? 'Approving...' : 'Approve Seller'}
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))

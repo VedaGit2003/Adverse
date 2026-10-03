@@ -267,3 +267,39 @@ exports.moderateHoarding = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Moderate seller verification status (Approve / Put on hold / Suspend)
+ * @route   PUT /api/admin/sellers/:id/status
+ * @access  Private (Admin only)
+ */
+exports.moderateSellerStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['active', 'pending_verification', 'suspended'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+
+    const seller = await User.findOneAndUpdate(
+      { _id: req.params.id, role: 'seller' },
+      { status },
+      { new: true }
+    ).select('-passwordHash');
+
+    if (!seller) {
+      return res.status(404).json({ success: false, message: 'Seller not found.' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Seller account status updated to '${status}'.`,
+      seller
+    });
+  } catch (error) {
+    next(error);
+  }
+};
