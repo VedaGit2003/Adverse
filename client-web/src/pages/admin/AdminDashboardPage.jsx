@@ -529,6 +529,20 @@ export default function AdminDashboardPage() {
                               {h.location?.landmark && (
                                 <p className="text-slate-400 text-[11px]">Near: {h.location.landmark}</p>
                               )}
+                              <a
+                                href={
+                                  h.location?.googleMapsUrl ||
+                                  (h.location?.geo?.coordinates?.length === 2
+                                    ? `https://www.google.com/maps?q=${h.location.geo.coordinates[1]},${h.location.geo.coordinates[0]}`
+                                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${h.title}, ${h.location?.address || ''}, ${h.location?.city || 'Kolkata'}`)}`)
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] text-rose-600 hover:text-rose-800 font-bold mt-1"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                <span>Google Maps</span>
+                              </a>
                             </div>
                           </td>
 
@@ -1195,18 +1209,35 @@ export default function AdminDashboardPage() {
             </div>
 
             {/* Location & GPS */}
-            <div className="mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
-              <span className="text-slate-400 font-semibold uppercase">Physical Location & GPS Geo-Point</span>
-              <p className="text-slate-800 font-medium mt-1">
-                {selectedHoardingModal.location?.address}, {selectedHoardingModal.location?.city},{' '}
-                {selectedHoardingModal.location?.district} - {selectedHoardingModal.location?.pincode}
-              </p>
-              {selectedHoardingModal.location?.geo?.coordinates && (
-                <div className="mt-1 font-mono text-[11px] text-indigo-600">
-                  Coordinates: [Lng: {selectedHoardingModal.location.geo.coordinates[0]}, Lat:{' '}
-                  {selectedHoardingModal.location.geo.coordinates[1]}]
-                </div>
-              )}
+            <div className="mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-slate-400 font-semibold uppercase">Physical Location & GPS Geo-Point</span>
+                <p className="text-slate-800 font-medium mt-1">
+                  {selectedHoardingModal.location?.address}, {selectedHoardingModal.location?.city},{' '}
+                  {selectedHoardingModal.location?.district} - {selectedHoardingModal.location?.pincode}
+                </p>
+                {selectedHoardingModal.location?.geo?.coordinates && (
+                  <div className="mt-1 font-mono text-[11px] text-indigo-600">
+                    Coordinates: [Lng: {selectedHoardingModal.location.geo.coordinates[0]}, Lat:{' '}
+                    {selectedHoardingModal.location.geo.coordinates[1]}]
+                  </div>
+                )}
+              </div>
+              <a
+                href={
+                  selectedHoardingModal.location?.googleMapsUrl ||
+                  (selectedHoardingModal.location?.geo?.coordinates?.length === 2
+                    ? `https://www.google.com/maps?q=${selectedHoardingModal.location.geo.coordinates[1]},${selectedHoardingModal.location.geo.coordinates[0]}`
+                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedHoardingModal.title}, ${selectedHoardingModal.location?.address || ''}, ${selectedHoardingModal.location?.city || 'Kolkata'}`)}`)
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs transition shrink-0"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>View on Google Maps</span>
+                <ExternalLink className="w-3 h-3 opacity-80" />
+              </a>
             </div>
 
             {/* Media Owner Attribution */}

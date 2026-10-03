@@ -49,6 +49,11 @@ const HoardingSchema = new mongoose.Schema(
           type: [Number],
           required: true
         }
+      },
+      googleMapsUrl: {
+        type: String,
+        default: '',
+        trim: true
       }
     },
     pricing: {

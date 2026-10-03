@@ -131,7 +131,8 @@ export default function SellerDashboardPage() {
         address: hoarding.location?.address || '',
         city: hoarding.location?.city || 'Kolkata',
         landmark: hoarding.location?.landmark || '',
-        pincode: hoarding.location?.pincode || ''
+        pincode: hoarding.location?.pincode || '',
+        googleMapsUrl: hoarding.location?.googleMapsUrl || ''
       },
       pricing: {
         baseRatePerMonth: hoarding.pricing?.baseRatePerMonth || '',
@@ -165,7 +166,8 @@ export default function SellerDashboardPage() {
           address: editHoardingModal.location.address,
           city: editHoardingModal.location.city,
           landmark: editHoardingModal.location.landmark,
-          pincode: editHoardingModal.location.pincode
+          pincode: editHoardingModal.location.pincode,
+          googleMapsUrl: editHoardingModal.location.googleMapsUrl || ''
         },
         pricing: {
           baseRatePerMonth: Number(editHoardingModal.pricing.baseRatePerMonth),
@@ -297,6 +299,7 @@ export default function SellerDashboardPage() {
     city: 'Kolkata',
     landmark: '',
     pincode: '',
+    googleMapsUrl: '',
     baseRatePerMonth: '',
     baseRatePerDay: '',
     minimumBookingDays: 15,
@@ -325,7 +328,8 @@ export default function SellerDashboardPage() {
           address: newHoarding.address,
           city: newHoarding.city,
           landmark: newHoarding.landmark,
-          pincode: newHoarding.pincode
+          pincode: newHoarding.pincode,
+          googleMapsUrl: newHoarding.googleMapsUrl || ''
         },
         pricing: {
           baseRatePerMonth: Number(newHoarding.baseRatePerMonth),
@@ -350,6 +354,7 @@ export default function SellerDashboardPage() {
         city: 'Kolkata',
         landmark: '',
         pincode: '',
+        googleMapsUrl: '',
         baseRatePerMonth: '',
         baseRatePerDay: '',
         minimumBookingDays: 15,
@@ -680,14 +685,31 @@ export default function SellerDashboardPage() {
 
                     {/* Bottom Action Buttons */}
                     <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                      <Link
-                        to={`/hoardings/${h._id}`}
-                        target="_blank"
-                        className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
-                        title="View Public Marketplace Listing"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </Link>
+                      <div className="flex items-center gap-1">
+                        <Link
+                          to={`/hoardings/${h._id}`}
+                          target="_blank"
+                          className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+                          title="View Public Marketplace Listing"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Link>
+                        {(h.location?.googleMapsUrl || h.location?.geo?.coordinates?.length === 2) && (
+                          <a
+                            href={
+                              h.location.googleMapsUrl ||
+                              `https://www.google.com/maps?q=${h.location.geo.coordinates[1]},${h.location.geo.coordinates[0]}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition flex items-center gap-1 text-xs font-bold"
+                            title="View Exact Pin on Google Maps"
+                          >
+                            <MapPin className="w-4 h-4" />
+                            <span className="hidden sm:inline text-[11px]">Maps</span>
+                          </a>
+                        )}
+                      </div>
 
                       <div className="flex items-center gap-2">
                         <button
@@ -1002,6 +1024,30 @@ export default function SellerDashboardPage() {
                   }
                   className="w-full border border-slate-200 p-2.5 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-700">Google Maps Location Link</label>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                    Optional, Highly Recommended ⭐
+                  </span>
+                </div>
+                <input
+                  type="url"
+                  value={editHoardingModal.location.googleMapsUrl || ''}
+                  onChange={(e) =>
+                    setEditHoardingModal({
+                      ...editHoardingModal,
+                      location: { ...editHoardingModal.location, googleMapsUrl: e.target.value }
+                    })
+                  }
+                  placeholder="e.g. https://maps.app.goo.gl/xxx or https://www.google.com/maps?q=..."
+                  className="w-full border border-slate-200 p-2.5 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-[11px]"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Enables advertisers, site managers, and admins to click and view the exact pin on Google Maps.
+                </p>
               </div>
 
               {/* PRICING SECTION (EDIT PRICE LATER) */}
@@ -1399,6 +1445,25 @@ export default function SellerDashboardPage() {
                   onChange={(e) => setNewHoarding({ ...newHoarding, address: e.target.value })}
                   className="w-full border border-slate-200 p-2 rounded-xl"
                 />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-700">Google Maps Location Link</label>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                    Optional, Highly Recommended ⭐
+                  </span>
+                </div>
+                <input
+                  type="url"
+                  placeholder="e.g. https://maps.app.goo.gl/xxx or https://www.google.com/maps?q=..."
+                  value={newHoarding.googleMapsUrl}
+                  onChange={(e) => setNewHoarding({ ...newHoarding, googleMapsUrl: e.target.value })}
+                  className="w-full border border-slate-200 p-2 rounded-xl font-mono text-[11px]"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Paste Google Maps pin link so advertisers and admins can view the live street location with 1 click.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">

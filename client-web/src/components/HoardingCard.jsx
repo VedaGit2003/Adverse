@@ -53,6 +53,23 @@ export default function HoardingCard({ hoarding }) {
             {hoarding.hoardingType}
           </span>
         </div>
+
+        {(hoarding.location?.googleMapsUrl || (hoarding.location?.geo?.coordinates?.length === 2)) && (
+          <a
+            href={
+              hoarding.location?.googleMapsUrl ||
+              `https://www.google.com/maps?q=${hoarding.location.geo.coordinates[1]},${hoarding.location.geo.coordinates[0]}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-white/95 hover:bg-white text-slate-800 hover:text-rose-600 shadow-sm border border-slate-200/50 text-[11px] font-bold flex items-center gap-1 transition"
+            title="Open Location in Google Maps"
+          >
+            <MapPin className="w-3 h-3 text-rose-500" />
+            <span>Map</span>
+          </a>
+        )}
       </div>
 
       <div className="p-5 flex-1 flex flex-col justify-between">

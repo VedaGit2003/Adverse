@@ -196,7 +196,8 @@ exports.createHoarding = async (req, res, next) => {
         geo: {
           type: 'Point',
           coordinates: [parseFloat(coordinates[0]), parseFloat(coordinates[1])]
-        }
+        },
+        googleMapsUrl: location.googleMapsUrl || req.body.googleMapsUrl || ''
       },
       pricing: {
         baseRatePerMonth: pricing.baseRatePerMonth,
@@ -245,12 +246,15 @@ exports.updateHoarding = async (req, res, next) => {
       };
     }
 
-    if (updates.location) {
+    if (updates.location || updates.googleMapsUrl) {
       const existingLocation = hoarding.location?.toObject?.() || hoarding.location || {};
       updates.location = {
         ...existingLocation,
-        ...updates.location
+        ...(updates.location || {})
       };
+      if (updates.googleMapsUrl) {
+        updates.location.googleMapsUrl = updates.googleMapsUrl;
+      }
     }
 
     if (updates.location?.geo?.coordinates) {

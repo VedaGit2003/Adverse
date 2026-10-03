@@ -69,7 +69,8 @@ const autoSeed = async () => {
             district: 'Kolkata',
             landmark: 'Allen Park / Camac St Corner',
             pincode: '700016',
-            geo: { type: 'Point', coordinates: [88.3527, 22.5532] }
+            geo: { type: 'Point', coordinates: [88.3527, 22.5532] },
+            googleMapsUrl: 'https://maps.google.com/?q=22.5532,88.3527'
           },
           pricing: {
             baseRatePerMonth: 185000,
@@ -97,7 +98,8 @@ const autoSeed = async () => {
             district: 'North 24 Parganas',
             landmark: 'Beside Technopolis Building',
             pincode: '700091',
-            geo: { type: 'Point', coordinates: [88.4312, 22.5804] }
+            geo: { type: 'Point', coordinates: [88.4312, 22.5804] },
+            googleMapsUrl: 'https://maps.google.com/?q=22.5804,88.4312'
           },
           pricing: {
             baseRatePerMonth: 220000,
@@ -125,7 +127,8 @@ const autoSeed = async () => {
             district: 'Howrah',
             landmark: 'Near Howrah Bus Stand & Station Entry',
             pincode: '711101',
-            geo: { type: 'Point', coordinates: [88.3426, 22.5855] }
+            geo: { type: 'Point', coordinates: [88.3426, 22.5855] },
+            googleMapsUrl: 'https://maps.google.com/?q=22.5855,88.3426'
           },
           pricing: {
             baseRatePerMonth: 250000,
@@ -153,7 +156,8 @@ const autoSeed = async () => {
             district: 'Darjeeling',
             landmark: 'Mallaguri Police Outpost',
             pincode: '734003',
-            geo: { type: 'Point', coordinates: [88.4215, 26.7212] }
+            geo: { type: 'Point', coordinates: [88.4215, 26.7212] },
+            googleMapsUrl: 'https://maps.google.com/?q=26.7212,88.4215'
           },
           pricing: {
             baseRatePerMonth: 95000,
@@ -181,7 +185,8 @@ const autoSeed = async () => {
             district: 'South 24 Parganas',
             landmark: 'Ruby Hospital Crossing',
             pincode: '700107',
-            geo: { type: 'Point', coordinates: [88.3995, 22.5134] }
+            geo: { type: 'Point', coordinates: [88.3995, 22.5134] },
+            googleMapsUrl: 'https://maps.google.com/?q=22.5134,88.3995'
           },
           pricing: {
             baseRatePerMonth: 160000,
@@ -209,7 +214,8 @@ const autoSeed = async () => {
             district: 'Paschim Bardhaman',
             landmark: 'City Centre Bus Terminal',
             pincode: '713216',
-            geo: { type: 'Point', coordinates: [87.3119, 23.5204] }
+            geo: { type: 'Point', coordinates: [87.3119, 23.5204] },
+            googleMapsUrl: 'https://maps.google.com/?q=23.5204,87.3119'
           },
           pricing: {
             baseRatePerMonth: 85000,
