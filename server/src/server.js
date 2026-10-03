@@ -1,10 +1,12 @@
 const app = require('./app');
 const { connectDB } = require('./config/db');
 const { PORT } = require('./config/env');
+const autoSeed = require('./config/autoSeed');
 
 const startServer = async () => {
   try {
     await connectDB();
+    await autoSeed();
 
     const server = app.listen(PORT, () => {
       console.log(`=======================================================`);
