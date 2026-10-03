@@ -225,6 +225,34 @@ exports.updateHoarding = async (req, res, next) => {
     }
 
     const updates = { ...req.body };
+
+    if (updates.pricing) {
+      const existingPricing = hoarding.pricing?.toObject?.() || hoarding.pricing || {};
+      updates.pricing = {
+        ...existingPricing,
+        ...updates.pricing
+      };
+      if (updates.pricing.baseRatePerMonth && !updates.pricing.baseRatePerDay) {
+        updates.pricing.baseRatePerDay = Math.round(Number(updates.pricing.baseRatePerMonth) / 30);
+      }
+    }
+
+    if (updates.dimensions) {
+      const existingDimensions = hoarding.dimensions?.toObject?.() || hoarding.dimensions || {};
+      updates.dimensions = {
+        ...existingDimensions,
+        ...updates.dimensions
+      };
+    }
+
+    if (updates.location) {
+      const existingLocation = hoarding.location?.toObject?.() || hoarding.location || {};
+      updates.location = {
+        ...existingLocation,
+        ...updates.location
+      };
+    }
+
     if (updates.location?.geo?.coordinates) {
       updates.location.geo = {
         type: 'Point',
@@ -236,7 +264,38 @@ exports.updateHoarding = async (req, res, next) => {
     }
 
     hoarding = await Hoarding.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
-    res.status(200).json({ success: true, message: 'Hoarding updated.', hoarding });
+    res.status(200).json({ success: true, message: 'Hoarding updated successfully.', hoarding });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateHoardingStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['available', 'occupied', 'under_maintenance', 'inactive'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+
+    const hoarding = await Hoarding.findById(req.params.id);
+    if (!hoarding) return res.status(404).json({ success: false, message: 'Hoarding site not found.' });
+
+    if (hoarding.sellerId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    }
+
+    hoarding.availabilityStatus = status;
+    await hoarding.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Hoarding status updated to ${status}.`,
+      hoarding
+    });
   } catch (error) {
     next(error);
   }

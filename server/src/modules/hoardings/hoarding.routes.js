@@ -6,6 +6,7 @@ const {
   getHoardingById,
   createHoarding,
   updateHoarding,
+  updateHoardingStatus,
   deleteHoarding,
   getMyHoardings
 } = require('./hoarding.controller');
@@ -18,6 +19,7 @@ router.get('/:id', getHoardingById);
 
 router.post('/', verifyToken, authorizeRoles('seller', 'admin'), createHoarding);
 router.put('/:id', verifyToken, authorizeRoles('seller', 'admin'), updateHoarding);
+router.put('/:id/status', verifyToken, authorizeRoles('seller', 'admin'), updateHoardingStatus);
 router.delete('/:id', verifyToken, authorizeRoles('seller', 'admin'), deleteHoarding);
 
 module.exports = router;
