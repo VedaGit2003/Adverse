@@ -4,7 +4,19 @@ import api from '../services/api';
 import HoardingCard from '../components/HoardingCard';
 import { Search, MapPin, Navigation, Sparkles, Shield, Building2, ArrowRight } from 'lucide-react';
 
-const POPULAR_HUBS = ['Kolkata', 'Park Street', 'Salt Lake', 'Howrah', 'Siliguri', 'Durgapur', 'Asansol'];
+const POPULAR_HUBS = [
+  'Park Street',
+  'Sector V',
+  'New Town',
+  'Gariahat',
+  'Howrah',
+  'Siliguri',
+  'Durgapur',
+  'Asansol',
+  'Kharagpur',
+  'Haldia',
+  'Darjeeling'
+];
 
 export default function HomePage() {
   const [searchLocation, setSearchLocation] = useState('');
@@ -112,18 +124,28 @@ export default function HomePage() {
               </div>
             </form>
 
-            <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 overflow-x-auto text-xs py-1">
-              <span className="text-slate-400 font-medium shrink-0">Popular in WB:</span>
-              {POPULAR_HUBS.map((hub) => (
-                <button
-                  key={hub}
-                  type="button"
-                  onClick={() => navigate(`/search?location=${encodeURIComponent(hub)}`)}
-                  className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-brand-50 hover:text-brand-600 text-slate-600 font-semibold transition-colors shrink-0"
-                >
-                  {hub}
-                </button>
-              ))}
+            <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs py-1">
+              <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+                <span className="text-slate-400 font-semibold shrink-0">Popular in WB:</span>
+                {POPULAR_HUBS.map((hub) => (
+                  <button
+                    key={hub}
+                    type="button"
+                    onClick={() => navigate(`/search?location=${encodeURIComponent(hub)}`)}
+                    className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 font-semibold transition-colors shrink-0"
+                  >
+                    {hub}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => navigate('/search')}
+                className="px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition flex items-center gap-1 shrink-0 ml-auto"
+              >
+                🗺️ <span>Explore Map View</span>
+              </button>
             </div>
           </div>
         </div>

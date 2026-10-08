@@ -23,8 +23,12 @@ import {
   ExternalLink,
   X,
   CreditCard,
-  Maximize2
+  Maximize2,
+  Map as MapIcon,
+  LayoutGrid,
+  Compass
 } from 'lucide-react';
+import HoardingMap from '../../components/HoardingMap';
 
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState('hoardings'); // 'hoardings' | 'bookings' | 'users' | 'sellers'
@@ -37,6 +41,7 @@ export default function AdminDashboardPage() {
   const [hoardingSearch, setHoardingSearch] = useState('');
   const [hoardingCityFilter, setHoardingCityFilter] = useState('');
   const [hoardingApprovalFilter, setHoardingApprovalFilter] = useState('');
+  const [hoardingViewMode, setHoardingViewMode] = useState('table'); // 'table' | 'map'
   const [selectedHoardingModal, setSelectedHoardingModal] = useState(null);
   const [moderatingId, setModeratingId] = useState(null);
 
@@ -482,29 +487,77 @@ export default function AdminDashboardPage() {
                 <select
                   value={hoardingCityFilter}
                   onChange={(e) => setHoardingCityFilter(e.target.value)}
-                  className="px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                 >
-                  <option value="">All Cities</option>
+                  <option value="">All WB Cities</option>
                   <option value="Kolkata">Kolkata</option>
                   <option value="Howrah">Howrah</option>
+                  <option value="Hooghly">Hooghly</option>
                   <option value="Siliguri">Siliguri</option>
                   <option value="Durgapur">Durgapur</option>
+                  <option value="Asansol">Asansol</option>
+                  <option value="Kharagpur">Kharagpur</option>
+                  <option value="Haldia">Haldia</option>
+                  <option value="Darjeeling">Darjeeling</option>
+                  <option value="Bardhaman">Bardhaman</option>
+                  <option value="Malda">Malda</option>
+                  <option value="Murshidabad">Murshidabad</option>
+                  <option value="Nadia">Nadia / Kalyani</option>
                 </select>
 
                 <select
                   value={hoardingApprovalFilter}
                   onChange={(e) => setHoardingApprovalFilter(e.target.value)}
-                  className="px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                 >
                   <option value="">All Moderation Status</option>
                   <option value="approved">Approved & Live</option>
                   <option value="pending">Pending Moderation</option>
                 </select>
+
+                {/* View Mode Toggle: Table Directory vs Interactive Map */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setHoardingViewMode('table')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                      hoardingViewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Table</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHoardingViewMode('map')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                      hoardingViewMode === 'map' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <MapIcon className="w-3.5 h-3.5" />
+                    <span>Territory Map ({filteredHoardings.length})</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Hoardings Table / Grid */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            {/* Conditional: Territory Map View vs Directory Table */}
+            {hoardingViewMode === 'map' ? (
+              <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-600 px-1">
+                  <span className="flex items-center gap-1.5 text-indigo-700">
+                    <MapIcon className="w-4 h-4" /> State-wide Territory Map ({filteredHoardings.length} Hoardings)
+                  </span>
+                  <span className="text-slate-400">Click any marker to inspect specs, pricing, and moderation status</span>
+                </div>
+                <HoardingMap
+                  hoardings={filteredHoardings}
+                  height="650px"
+                />
+              </div>
+            ) : (
+              /* Hoardings Table / Grid */
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -679,7 +732,8 @@ export default function AdminDashboardPage() {
                 </table>
               </div>
             </div>
-          </div>
+          )}
+        </div>
         )}
 
         {/* ============================================================== */}

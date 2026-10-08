@@ -329,3 +329,12 @@ exports.getMyHoardings = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getWBLocations = async (req, res, next) => {
+  try {
+    const { WB_REGIONS } = require('../../utils/geo');
+    res.status(200).json({ success: true, regions: WB_REGIONS });
+  } catch (error) {
+    next(error);
+  }
+};

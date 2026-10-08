@@ -8,10 +8,12 @@ const {
   updateHoarding,
   updateHoardingStatus,
   deleteHoarding,
-  getMyHoardings
+  getMyHoardings,
+  getWBLocations
 } = require('./hoarding.controller');
 const { verifyToken, authorizeRoles, requireApprovedSeller } = require('../../middlewares/auth.middleware');
 
+router.get('/locations', getWBLocations);
 router.get('/nearby', getNearbyHoardings);
 router.get('/', getAllHoardings);
 router.get('/my-sites', verifyToken, authorizeRoles('seller', 'admin'), getMyHoardings);

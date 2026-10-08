@@ -27,8 +27,12 @@ import {
   ShieldCheck,
   ShieldAlert,
   Lock,
-  FileText
+  FileText,
+  Map as MapIcon,
+  Compass,
+  LayoutGrid
 } from 'lucide-react';
+import HoardingMap from '../../components/HoardingMap';
 
 export default function SellerDashboardPage() {
   const { user, updateUser, refreshUser } = useAuth();
@@ -56,6 +60,12 @@ export default function SellerDashboardPage() {
     name: '',
     phone: ''
   });
+
+  // Inventory View Mode & Map Picker State
+  const [sellerViewMode, setSellerViewMode] = useState('table'); // 'table' | 'map'
+  const [showMapPickerModal, setShowMapPickerModal] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState('new'); // 'new' | 'edit'
+  const [pickedCoords, setPickedCoords] = useState(null);
 
   // Form states for Add / Edit
   const [formLoading, setFormLoading] = useState(false);
@@ -313,6 +323,8 @@ export default function SellerDashboardPage() {
     city: 'Kolkata',
     landmark: '',
     pincode: '',
+    latitude: '',
+    longitude: '',
     googleMapsUrl: '',
     baseRatePerMonth: '',
     baseRatePerDay: '',
@@ -321,6 +333,32 @@ export default function SellerDashboardPage() {
     mountingCostEstimate: 0,
     photos: []
   });
+
+  const handlePointPicked = (lat, lng) => {
+    setPickedCoords([lat, lng]);
+    const mapsUrl = `https://maps.google.com/?q=${lat.toFixed(5)},${lng.toFixed(5)}`;
+    if (pickerTarget === 'new') {
+      setNewHoarding((prev) => ({
+        ...prev,
+        latitude: lat.toFixed(5),
+        longitude: lng.toFixed(5),
+        googleMapsUrl: mapsUrl,
+        landmark: prev.landmark || `Near GPS (${lat.toFixed(3)}, ${lng.toFixed(3)})`
+      }));
+    } else if (pickerTarget === 'edit' && editHoardingModal) {
+      setEditHoardingModal((prev) => ({
+        ...prev,
+        location: {
+          ...prev.location,
+          latitude: lat.toFixed(5),
+          longitude: lng.toFixed(5),
+          googleMapsUrl: mapsUrl
+        }
+      }));
+    }
+    showToast(`Location coordinates pinned: ${lat.toFixed(4)}, ${lng.toFixed(4)}! Google Maps link generated.`);
+    setShowMapPickerModal(false);
+  };
 
   const handleAddHoardingSubmit = async (e) => {
     e.preventDefault();
@@ -343,7 +381,10 @@ export default function SellerDashboardPage() {
           city: newHoarding.city,
           landmark: newHoarding.landmark,
           pincode: newHoarding.pincode,
-          googleMapsUrl: newHoarding.googleMapsUrl || ''
+          geo: (newHoarding.latitude && newHoarding.longitude)
+            ? { type: 'Point', coordinates: [parseFloat(newHoarding.longitude), parseFloat(newHoarding.latitude)] }
+            : undefined,
+          googleMapsUrl: newHoarding.googleMapsUrl || (newHoarding.latitude && newHoarding.longitude ? `https://maps.google.com/?q=${newHoarding.latitude},${newHoarding.longitude}` : '')
         },
         pricing: {
           baseRatePerMonth: Number(newHoarding.baseRatePerMonth),
@@ -368,6 +409,8 @@ export default function SellerDashboardPage() {
         city: 'Kolkata',
         landmark: '',
         pincode: '',
+        latitude: '',
+        longitude: '',
         googleMapsUrl: '',
         baseRatePerMonth: '',
         baseRatePerDay: '',
@@ -753,11 +796,49 @@ export default function SellerDashboardPage() {
                 <option value="under_maintenance">Under Maintenance</option>
                 <option value="inactive">Offline / Inactive</option>
               </select>
+
+              {/* View Mode Toggle: Grid Cards vs Inventory Map */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSellerViewMode('table')}
+                  className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                    sellerViewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Cards</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSellerViewMode('map')}
+                  className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                    sellerViewMode === 'map' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <MapIcon className="w-3.5 h-3.5" />
+                  <span>Map View</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Hoardings Grid / Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {/* Conditional Display: Map View vs Grid Cards */}
+          {sellerViewMode === 'map' ? (
+            <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-600 px-1">
+                <span className="flex items-center gap-1.5 text-indigo-700">
+                  <MapIcon className="w-4 h-4" /> Visual Geographic Distribution of Your Hoardings ({filteredHoardings.length})
+                </span>
+                <span className="text-slate-400">Click pins to inspect specs, pricing, and live photos</span>
+              </div>
+              <HoardingMap
+                hoardings={filteredHoardings}
+                height="600px"
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredHoardings.length === 0 ? (
               <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-200">
                 <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -910,7 +991,8 @@ export default function SellerDashboardPage() {
                 </div>
               ))
             )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* ============================================================== */}
@@ -1627,9 +1709,22 @@ export default function SellerDashboardPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block font-bold text-slate-700">Google Maps Location Link</label>
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                    Optional, Highly Recommended ⭐
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerTarget('new');
+                      setPickedCoords(
+                        newHoarding.latitude && newHoarding.longitude
+                          ? [parseFloat(newHoarding.latitude), parseFloat(newHoarding.longitude)]
+                          : [22.5726, 88.3639]
+                      );
+                      setShowMapPickerModal(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition shadow-2xs"
+                  >
+                    <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>📍 Pin on Free Map</span>
+                  </button>
                 </div>
                 <input
                   type="url"
@@ -1639,7 +1734,7 @@ export default function SellerDashboardPage() {
                   className="w-full border border-slate-200 p-2 rounded-xl font-mono text-[11px]"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Paste Google Maps pin link so advertisers and admins can view the live street location with 1 click.
+                  Click "Pin on Free Map" to click anywhere on the map and auto-fill coordinates + Google Maps URL.
                 </p>
               </div>
 
@@ -1818,6 +1913,63 @@ export default function SellerDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* INTERACTIVE MAP LOCATION PICKER MODAL */}
+      {/* ============================================================== */}
+      {showMapPickerModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowMapPickerModal(false)}
+              className="absolute right-5 top-5 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition z-10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 uppercase">
+                Interactive Map Pinpoint
+              </span>
+              <span className="text-xs text-slate-400">• Free & Instant</span>
+            </div>
+            <h3 className="text-xl font-black text-slate-900">
+              Click anywhere on the map to place your hoarding
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Click on the exact road, intersection, or building rooftop to automatically calculate GPS coordinates and generate the Google Maps street link.
+            </p>
+
+            <HoardingMap
+              pickerMode={true}
+              selectedPoint={pickedCoords}
+              center={pickedCoords || [22.5726, 88.3639]}
+              onPointPicked={handlePointPicked}
+              height="450px"
+            />
+
+            <div className="mt-4 flex items-center justify-between">
+              <div className="text-xs text-slate-500 font-semibold">
+                {pickedCoords ? (
+                  <span className="text-emerald-700">
+                    📍 Pinned: {pickedCoords[0].toFixed(5)}, {pickedCoords[1].toFixed(5)}
+                  </span>
+                ) : (
+                  <span>Click anywhere on the map to set location pin</span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowMapPickerModal(false)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
