@@ -12,10 +12,12 @@ import {
   Modal,
   Linking,
   Platform,
-  Dimensions
+  Dimensions,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import mobileApi from '../api/client';
 import MobileHoardingMap from '../components/MobileHoardingMap';
 
@@ -37,6 +39,7 @@ export default function HomeScreen({ navigation }) {
   const [hoardings, setHoardings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedArea, setSelectedArea] = useState('All WB');
   const [mapCenter, setMapCenter] = useState([22.5726, 88.3639]);
@@ -90,6 +93,40 @@ export default function HomeScreen({ navigation }) {
     fetchHoardings();
   }, []);
 
+  // Use My Current GPS Location ("Near Me")
+  const handleUseCurrentLocation = async () => {
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Location Permission Required',
+          'Please grant location permissions to discover hoarding billboards closest to your current physical position.'
+        );
+        setLocating(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const lat = loc.coords.latitude;
+      const lng = loc.coords.longitude;
+
+      setSelectedArea('Near Me');
+      setSearchPin([lat, lng]);
+      setMapCenter([lat, lng]);
+      setShowAreaModal(false);
+      fetchHoardings([lat, lng], radiusKm);
+    } catch (err) {
+      console.warn('Error fetching location:', err);
+      Alert.alert(
+        'GPS Location Error',
+        'Could not obtain your current location. Please verify that GPS is turned on in your device settings.'
+      );
+    } finally {
+      setLocating(false);
+    }
+  };
+
   const handleSelectQuickArea = (area) => {
     setSelectedArea(area.name);
     if (!area.coords) {
@@ -103,12 +140,12 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const handleSelectModalArea = (areaItem) => {
-    setSelectedArea(areaItem.name);
-    setSearchPin([areaItem.latitude, areaItem.longitude]);
-    setMapCenter([areaItem.latitude, areaItem.longitude]);
+  const handleSelectModalArea = (place) => {
+    setSelectedArea(place.name);
+    setSearchPin([place.latitude, place.longitude]);
+    setMapCenter([place.latitude, place.longitude]);
     setShowAreaModal(false);
-    fetchHoardings([areaItem.latitude, areaItem.longitude], radiusKm);
+    fetchHoardings([place.latitude, place.longitude], radiusKm);
   };
 
   const handleMapCenterClick = (lat, lng) => {
@@ -128,6 +165,8 @@ export default function HomeScreen({ navigation }) {
       Linking.openURL(url).catch((err) => console.warn('Cannot open maps url', err));
     }
   };
+
+  const isNearMeActive = selectedArea === 'Near Me';
 
   const filteredHoardings = hoardings.filter((h) => {
     if (!searchQuery) return true;
@@ -189,7 +228,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Search Bar & Area Picker Button */}
+        {/* Search Bar & Area Picker Button & GPS Near Me Button */}
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
             <Ionicons name="search" size={16} color="#94a3b8" style={{ marginRight: 6 }} />
@@ -217,15 +256,55 @@ export default function HomeScreen({ navigation }) {
             </Text>
             <Ionicons name="chevron-down" size={14} color="#64748b" />
           </TouchableOpacity>
+
+          {/* Dedicated Near Me GPS Button */}
+          <TouchableOpacity
+            onPress={handleUseCurrentLocation}
+            disabled={locating}
+            style={[styles.nearMeBtn, isNearMeActive && styles.nearMeBtnActive]}
+            title="Search Near Me"
+          >
+            {locating ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="locate" size={18} color="#fff" />
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* Horizontal Quick Area Chips */}
+        {/* Horizontal Quick Area Chips with Near Me First */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.chipsScroll}
           contentContainerStyle={{ paddingHorizontal: 4 }}
         >
+          {/* Prominent Near Me Chip */}
+          <TouchableOpacity
+            onPress={handleUseCurrentLocation}
+            disabled={locating}
+            style={[
+              styles.chip,
+              styles.nearMeChip,
+              isNearMeActive && styles.nearMeChipActive
+            ]}
+          >
+            <Ionicons
+              name="navigate"
+              size={12}
+              color={isNearMeActive ? '#fff' : '#38bdf8'}
+            />
+            <Text
+              style={[
+                styles.chipText,
+                styles.nearMeChipText,
+                isNearMeActive && styles.chipTextActive
+              ]}
+            >
+              {locating ? 'Locating...' : '📍 Near Me'}
+            </Text>
+          </TouchableOpacity>
+
           {QUICK_AREAS.map((item) => {
             const isSelected = selectedArea === item.name;
             return (
@@ -242,6 +321,48 @@ export default function HomeScreen({ navigation }) {
           })}
         </ScrollView>
       </View>
+
+      {/* Active GPS / Radius Search Banner */}
+      {searchPin && (
+        <View style={styles.activeFilterBanner}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+            <Ionicons name="navigate-circle" size={18} color="#2563eb" />
+            <Text style={styles.activeFilterText} numberOfLines={1}>
+              {selectedArea} ({radiusKm} km radius) • {filteredHoardings.length} found
+            </Text>
+          </View>
+
+          <View style={styles.radiusPillsRow}>
+            {[10, 25, 50].map((r) => (
+              <TouchableOpacity
+                key={r}
+                onPress={() => {
+                  setRadiusKm(r);
+                  fetchHoardings(searchPin, r);
+                }}
+                style={[styles.radiusPill, radiusKm === r && styles.radiusPillActive]}
+              >
+                <Text style={[styles.radiusPillText, radiusKm === r && styles.radiusPillTextActive]}>
+                  {r}km
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedArea('All WB');
+                setSearchPin(null);
+                setMapCenter([22.5726, 88.3639]);
+                fetchHoardings(null);
+              }}
+              style={styles.clearFilterBtn}
+              title="Reset Filter"
+            >
+              <Ionicons name="close" size={14} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Main Content Body */}
       {viewMode === 'map' ? (
@@ -332,6 +453,28 @@ export default function HomeScreen({ navigation }) {
                 <Ionicons name="close" size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
+
+            {/* Prominent Use Live Location button in Modal */}
+            <TouchableOpacity
+              onPress={handleUseCurrentLocation}
+              disabled={locating}
+              style={styles.modalNearMeBtn}
+            >
+              <View style={styles.modalNearMeIconWrap}>
+                {locating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="locate" size={18} color="#fff" />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalNearMeTitle}>Use My Live Location (Find Near Me)</Text>
+                <Text style={styles.modalNearMeSub}>
+                  Automatically search hoardings within {radiusKm} km of your GPS coordinates
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#2563eb" />
+            </TouchableOpacity>
 
             {/* Filter inside modal */}
             <View style={styles.modalSearchBox}>
@@ -435,6 +578,13 @@ function renderHoardingCard(item, navigation, openGoogleMaps) {
             {isAvailable ? 'AVAILABLE' : 'BOOKED'}
           </Text>
         </View>
+
+        {/* Distance Badge if search radius active */}
+        {item.distanceKm !== undefined && (
+          <View style={styles.distanceBadge}>
+            <Text style={styles.distanceBadgeText}>📍 {item.distanceKm} km away</Text>
+          </View>
+        )}
 
         {hasMapsLink && (
           <TouchableOpacity
@@ -557,6 +707,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 8,
+    alignItems: 'center',
   },
   searchBox: {
     flex: 1,
@@ -580,13 +731,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 10,
     gap: 4,
-    maxWidth: 130,
+    height: 40,
+    maxWidth: 125,
   },
   areaModalBtnText: {
     fontSize: 11,
     fontWeight: '800',
     color: '#0f172a',
     flexShrink: 1,
+  },
+  nearMeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nearMeBtnActive: {
+    backgroundColor: '#059669',
   },
   chipsScroll: {
     marginTop: 2,
@@ -598,6 +761,22 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     marginRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  nearMeChip: {
+    backgroundColor: '#0369a1',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+  },
+  nearMeChipActive: {
+    backgroundColor: '#059669',
+    borderColor: '#10b981',
+  },
+  nearMeChipText: {
+    color: '#bae6fd',
+    fontWeight: '800',
   },
   chipActive: {
     backgroundColor: '#2563eb',
@@ -609,6 +788,49 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: '#fff',
+  },
+  activeFilterBanner: {
+    backgroundColor: '#eff6ff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#bfdbfe',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  activeFilterText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1e40af',
+  },
+  radiusPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  radiusPill: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  radiusPillActive: {
+    backgroundColor: '#2563eb',
+  },
+  radiusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#1d4ed8',
+  },
+  radiusPillTextActive: {
+    color: '#fff',
+  },
+  clearFilterBtn: {
+    padding: 3,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 10,
+    marginLeft: 2,
   },
   mapBanner: {
     flexDirection: 'row',
@@ -658,6 +880,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
+  },
+  distanceBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: '#e11d48',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  distanceBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
   },
   badgeAvail: {
     backgroundColor: '#dcfce7',
@@ -811,6 +1047,35 @@ const styles = StyleSheet.create({
     padding: 6,
     backgroundColor: '#f1f5f9',
     borderRadius: 20,
+  },
+  modalNearMeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1.5,
+    borderColor: '#93c5fd',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  modalNearMeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalNearMeTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#1e40af',
+  },
+  modalNearMeSub: {
+    fontSize: 10,
+    color: '#3b82f6',
+    marginTop: 1,
   },
   modalSearchBox: {
     flexDirection: 'row',
