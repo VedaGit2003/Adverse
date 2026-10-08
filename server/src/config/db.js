@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
 const { MONGO_URI, USE_MEMORY_DB } = require('./env');
+
+// Set public DNS resolvers to prevent Windows/ISP querySrv ECONNREFUSED on MongoDB Atlas
+if (MONGO_URI && MONGO_URI.startsWith('mongodb+srv://')) {
+  try {
+    dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+  } catch (dnsErr) {
+    console.warn('Could not set custom DNS servers:', dnsErr.message);
+  }
+}
 
 let memoryServerInstance = null;
 
@@ -18,9 +28,9 @@ const connectDB = async () => {
     // Attempt direct connection to standard URI
     console.log(`Connecting to MongoDB at: ${MONGO_URI}...`);
     await mongoose.connect(MONGO_URI, {
-      serverSelectionTimeoutMS: 3000
+      serverSelectionTimeoutMS: 10000
     });
-    console.log(`✅ MongoDB Connected successfully to: ${mongoose.connection.host}`);
+    console.log(`✅ MongoDB Connected successfully to Atlas host: ${mongoose.connection.host}`);
   } catch (err) {
     console.warn(`⚠️ Could not connect to local MongoDB at ${MONGO_URI}: ${err.message}`);
     console.log('🔄 Falling back to embedded MongoMemoryServer for development...');
