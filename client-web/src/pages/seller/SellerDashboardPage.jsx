@@ -476,7 +476,8 @@ export default function SellerDashboardPage() {
   };
 
   // Filtered Hoardings for Seller
-  const filteredHoardings = hoardings.filter((h) => {
+  const filteredHoardings = (hoardings || []).filter((h) => {
+    if (!h) return false;
     const matchesSearch =
       !searchQuery ||
       h.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -714,10 +715,10 @@ export default function SellerDashboardPage() {
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Sites</span>
               <Building2 className="w-4 h-4 text-indigo-600" />
             </div>
-            <div className="text-2xl font-black text-slate-900 mt-2">{hoardings.length}</div>
+            <div className="text-2xl font-black text-slate-900 mt-2">{(hoardings || []).length}</div>
             <div className="text-xs text-slate-500 mt-1">
-              <span className="text-emerald-600 font-bold">{hoardings.filter((h) => h.availabilityStatus === 'available').length} Available</span> •{' '}
-              <span className="text-indigo-600 font-bold">{hoardings.filter((h) => h.availabilityStatus === 'occupied').length} Booked</span>
+              <span className="text-emerald-600 font-bold">{(hoardings || []).filter((h) => h?.availabilityStatus === 'available').length} Available</span> •{' '}
+              <span className="text-indigo-600 font-bold">{(hoardings || []).filter((h) => h?.availabilityStatus === 'occupied').length} Booked</span>
             </div>
           </div>
 
@@ -726,7 +727,7 @@ export default function SellerDashboardPage() {
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Bookings</span>
               <Layers className="w-4 h-4 text-emerald-600" />
             </div>
-            <div className="text-2xl font-black text-indigo-600 mt-2">{bookings.length}</div>
+            <div className="text-2xl font-black text-indigo-600 mt-2">{(bookings || []).length}</div>
             <div className="text-xs text-slate-500 mt-1">Active & historical leases</div>
           </div>
 
@@ -736,7 +737,7 @@ export default function SellerDashboardPage() {
               <Clock className="w-4 h-4 text-amber-500" />
             </div>
             <div className="text-2xl font-black text-amber-500 mt-2">
-              {payments.filter((p) => p.paymentStatus === 'pending').length}
+              {(payments || []).filter((p) => p?.paymentStatus === 'pending').length}
             </div>
             <div className="text-xs text-slate-500 mt-1">Awaiting bank verification</div>
           </div>
@@ -747,10 +748,9 @@ export default function SellerDashboardPage() {
               <DollarSign className="w-4 h-4 text-emerald-600" />
             </div>
             <div className="text-2xl font-black text-emerald-600 mt-2">
-              ₹
-              {payments
-                .filter((p) => p.paymentStatus === 'verified')
-                .reduce((acc, p) => acc + p.amount, 0)
+              ₹{(payments || [])
+                .filter((p) => p && p.paymentStatus === 'verified')
+                .reduce((acc, p) => acc + (Number(p.amount) || 0), 0)
                 .toLocaleString('en-IN')}
             </div>
             <div className="text-xs text-slate-500 mt-1">Reconciled payments</div>
