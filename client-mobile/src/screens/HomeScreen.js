@@ -8,13 +8,13 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   Modal,
   Linking,
   Platform,
   Dimensions
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import mobileApi from '../api/client';
 import MobileHoardingMap from '../components/MobileHoardingMap';
