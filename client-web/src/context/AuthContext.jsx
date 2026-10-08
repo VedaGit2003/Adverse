@@ -54,6 +54,16 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
+  const ssoLogin = async (ssoPayload) => {
+    const res = await api.post('/auth/sso', ssoPayload);
+    const { token: newToken, user: userData } = res.data;
+    setToken(newToken);
+    setUser(userData);
+    localStorage.setItem('adverse_token', newToken);
+    localStorage.setItem('adverse_user', JSON.stringify(userData));
+    return userData;
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -87,6 +97,7 @@ export const AuthProvider = ({ children }) => {
         loading,
         login,
         register,
+        ssoLogin,
         logout,
         refreshUser,
         updateUser,

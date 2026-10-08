@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, LogIn, AlertCircle, Sparkles } from 'lucide-react';
+import GoogleSSOModal, { GoogleLogo } from '../components/GoogleSSOModal';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showSSOModal, setShowSSOModal] = useState(false);
 
-  const { login } = useAuth();
+  const { login, ssoLogin } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
@@ -35,6 +37,26 @@ export default function LoginPage() {
     }
   };
 
+  const handleSSOAccountSelected = async (ssoPayload) => {
+    setError('');
+    setLoading(true);
+    try {
+      const user = await ssoLogin(ssoPayload);
+      setShowSSOModal(false);
+      if (user.role === 'seller') {
+        navigate('/seller/dashboard');
+      } else if (user.role === 'admin') {
+        navigate('/admin/dashboard');
+      } else {
+        navigate(redirect);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Google Single Sign-On failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleQuickLogin = (demoEmail, demoPass) => {
     setEmail(demoEmail);
     setPassword(demoPass);
@@ -43,12 +65,32 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="w-12 h-12 rounded-2xl bg-brand-600 flex items-center justify-center text-white font-extrabold text-2xl mx-auto shadow-md mb-3">
             AD
           </div>
           <h2 className="text-2xl font-extrabold text-slate-900">Welcome to ADVERSE</h2>
           <p className="text-xs text-slate-500 mt-1">Sign in to your account</p>
+        </div>
+
+        {/* Google SSO Button */}
+        <button
+          type="button"
+          onClick={() => setShowSSOModal(true)}
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-slate-50 active:scale-[0.99] text-slate-700 font-bold text-sm rounded-xl border border-slate-300 shadow-sm hover:shadow transition-all mb-4"
+        >
+          <GoogleLogo className="w-5 h-5 shrink-0" />
+          Continue with Google
+        </button>
+
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-200"></div>
+          </div>
+          <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
+            <span className="bg-white px-2.5 text-slate-400 font-bold">Or with email & password</span>
+          </div>
         </div>
 
         <div className="mb-6 p-3 bg-slate-50 rounded-2xl border border-slate-200">
@@ -135,6 +177,13 @@ export default function LoginPage() {
           </Link>
         </div>
       </div>
+
+      <GoogleSSOModal
+        isOpen={showSSOModal}
+        onClose={() => setShowSSOModal(false)}
+        onSelectAccount={handleSSOAccountSelected}
+        defaultRole="customer"
+      />
     </div>
   );
 }

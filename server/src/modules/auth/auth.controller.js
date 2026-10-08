@@ -134,3 +134,109 @@ exports.updateProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.ssoLogin = async (req, res, next) => {
+  try {
+    const { provider = 'google', ssoId, email, name, avatar, role, companyDetails } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email address is required for SSO authentication.'
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    let user = await User.findOne({ email: normalizedEmail });
+
+    if (!user && ssoId) {
+      user = await User.findOne({ ssoProvider: provider, ssoId });
+    }
+
+    if (user) {
+      if (user.status === 'suspended') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account is suspended. Please contact customer support.'
+        });
+      }
+
+      // Link SSO info if not already linked
+      let updated = false;
+      if (!user.ssoProvider) {
+        user.ssoProvider = provider;
+        updated = true;
+      }
+      if (ssoId && !user.ssoId) {
+        user.ssoId = ssoId;
+        updated = true;
+      }
+      if (avatar && !user.avatar) {
+        user.avatar = avatar;
+        updated = true;
+      }
+      if (updated) {
+        await user.save({ validateBeforeSave: false });
+      }
+
+      const token = user.getSignedJwtToken();
+
+      return res.status(200).json({
+        success: true,
+        message: `Signed in successfully with ${provider.charAt(0).toUpperCase() + provider.slice(1)}.`,
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone || '',
+          role: user.role,
+          status: user.status,
+          avatar: user.avatar || '',
+          ssoProvider: user.ssoProvider,
+          companyDetails: user.companyDetails
+        }
+      });
+    }
+
+    // New SSO user registration
+    const validRoles = ['customer', 'seller'];
+    const assignedRole = role && validRoles.includes(role.toLowerCase()) ? role.toLowerCase() : 'customer';
+    const displayName = (name && name.trim()) || normalizedEmail.split('@')[0];
+
+    user = await User.create({
+      name: displayName,
+      email: normalizedEmail,
+      ssoProvider: provider,
+      ssoId: ssoId || null,
+      avatar: avatar || '',
+      role: assignedRole,
+      status: assignedRole === 'seller' ? 'pending_verification' : 'active',
+      companyDetails: companyDetails || (assignedRole === 'seller' ? { companyName: displayName } : {})
+    });
+
+    const token = user.getSignedJwtToken();
+
+    res.status(201).json({
+      success: true,
+      message: assignedRole === 'seller'
+        ? 'Seller account registered with Google SSO! Profile pending admin verification.'
+        : 'Account created with Google SSO successfully!',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        role: user.role,
+        status: user.status,
+        avatar: user.avatar || '',
+        ssoProvider: user.ssoProvider,
+        companyDetails: user.companyDetails
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

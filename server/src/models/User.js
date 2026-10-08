@@ -21,15 +21,33 @@ const UserSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: [true, 'Please provide a contact phone number'],
-      unique: true,
+      required: function () {
+        return !this.ssoProvider;
+      },
+      sparse: true,
       trim: true
     },
     passwordHash: {
       type: String,
-      required: [true, 'Please provide a password'],
+      required: function () {
+        return !this.ssoProvider;
+      },
       minlength: [6, 'Password must be at least 6 characters'],
       select: false
+    },
+    ssoProvider: {
+      type: String,
+      enum: ['google', 'apple', 'local', null],
+      default: null
+    },
+    ssoId: {
+      type: String,
+      default: null,
+      sparse: true
+    },
+    avatar: {
+      type: String,
+      default: ''
     },
     role: {
       type: String,
@@ -55,7 +73,7 @@ const UserSchema = new mongoose.Schema(
 );
 
 UserSchema.pre('save', async function (next) {
-  if (!this.isModified('passwordHash')) {
+  if (!this.isModified('passwordHash') || !this.passwordHash) {
     return next();
   }
   const salt = await bcrypt.genSalt(10);
@@ -64,6 +82,7 @@ UserSchema.pre('save', async function (next) {
 });
 
 UserSchema.methods.matchPassword = async function (enteredPassword) {
+  if (!this.passwordHash) return false;
   return await bcrypt.compare(enteredPassword, this.passwordHash);
 };
 
@@ -73,7 +92,9 @@ UserSchema.methods.getSignedJwtToken = function () {
       id: this._id,
       role: this.role,
       name: this.name,
-      email: this.email
+      email: this.email,
+      avatar: this.avatar || '',
+      ssoProvider: this.ssoProvider || null
     },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }
