@@ -1,5 +1,5 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../utils/storage';
 
 // Host IP specified by user for physical Android/iOS devices & simulator
 export const LAN_HOST = '192.168.29.205';
@@ -19,7 +19,7 @@ mobileApi.interceptors.request.use(
   async (config) => {
     if (!config.headers.Authorization) {
       try {
-        const token = await AsyncStorage.getItem('adverse_token');
+        const token = await storage.getItem('adverse_token');
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../utils/storage';
 import mobileApi, { setAuthToken } from '../api/client';
 
 const AuthContext = createContext(null);
@@ -18,8 +18,8 @@ export const AuthProvider = ({ children }) => {
     const restoreSession = async () => {
       try {
         const [storedToken, storedUser] = await Promise.all([
-          AsyncStorage.getItem(TOKEN_KEY),
-          AsyncStorage.getItem(USER_KEY)
+          storage.getItem(TOKEN_KEY),
+          storage.getItem(USER_KEY)
         ]);
 
         if (storedToken && isMounted) {
@@ -39,14 +39,15 @@ export const AuthProvider = ({ children }) => {
             const res = await mobileApi.get('/auth/me');
             if (res.data?.user && isMounted) {
               setUser(res.data.user);
-              await AsyncStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
+              await storage.setItem(USER_KEY, JSON.stringify(res.data.user));
             }
           } catch (apiErr) {
             // Only invalidate session if the token is explicitly rejected (HTTP 401)
             // If offline, connection timed out, or LAN lag occurred, keep session intact!
             if (apiErr.response?.status === 401) {
               console.log('Mobile session expired (401). Clearing storage.');
-              await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]).catch(() => {});
+              await storage.removeItem(TOKEN_KEY);
+              await storage.removeItem(USER_KEY);
               if (isMounted) {
                 setToken(null);
                 setUser(null);
@@ -79,10 +80,8 @@ export const AuthProvider = ({ children }) => {
     setToken(jwt);
     setUser(userData);
     setAuthToken(jwt);
-    await AsyncStorage.multiSet([
-      [TOKEN_KEY, jwt],
-      [USER_KEY, JSON.stringify(userData)]
-    ]);
+    await storage.setItem(TOKEN_KEY, jwt);
+    await storage.setItem(USER_KEY, JSON.stringify(userData));
     return userData;
   };
 
@@ -92,10 +91,8 @@ export const AuthProvider = ({ children }) => {
     setToken(jwt);
     setUser(userData);
     setAuthToken(jwt);
-    await AsyncStorage.multiSet([
-      [TOKEN_KEY, jwt],
-      [USER_KEY, JSON.stringify(userData)]
-    ]);
+    await storage.setItem(TOKEN_KEY, jwt);
+    await storage.setItem(USER_KEY, JSON.stringify(userData));
     return userData;
   };
 
@@ -105,10 +102,8 @@ export const AuthProvider = ({ children }) => {
     setToken(jwt);
     setUser(userData);
     setAuthToken(jwt);
-    await AsyncStorage.multiSet([
-      [TOKEN_KEY, jwt],
-      [USER_KEY, JSON.stringify(userData)]
-    ]);
+    await storage.setItem(TOKEN_KEY, jwt);
+    await storage.setItem(USER_KEY, JSON.stringify(userData));
     return userData;
   };
 
@@ -116,7 +111,8 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setUser(null);
     setAuthToken(null);
-    await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]).catch(() => {});
+    await storage.removeItem(TOKEN_KEY);
+    await storage.removeItem(USER_KEY);
   };
 
   const refreshUser = async () => {
@@ -125,7 +121,7 @@ export const AuthProvider = ({ children }) => {
       const res = await mobileApi.get('/auth/me');
       if (res.data?.user) {
         setUser(res.data.user);
-        await AsyncStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
+        await storage.setItem(USER_KEY, JSON.stringify(res.data.user));
         return res.data.user;
       }
     } catch (err) {
@@ -137,7 +133,7 @@ export const AuthProvider = ({ children }) => {
     const res = await mobileApi.put('/auth/profile', profileData);
     if (res.data?.user) {
       setUser(res.data.user);
-      await AsyncStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
+      await storage.setItem(USER_KEY, JSON.stringify(profileData));
       return res.data.user;
     }
   };

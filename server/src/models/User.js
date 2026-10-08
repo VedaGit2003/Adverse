@@ -21,11 +21,10 @@ const UserSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: function () {
-        return !this.ssoProvider;
-      },
+      required: false,
       sparse: true,
-      trim: true
+      trim: true,
+      default: undefined
     },
     passwordHash: {
       type: String,

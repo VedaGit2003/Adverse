@@ -25,13 +25,17 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
+      const trimmedEmail = (email || '').trim().toLowerCase();
+      const trimmedPhone = (phone || '').trim();
+      const trimmedName = (name || '').trim();
+
       const user = await register({
-        name,
-        email,
-        phone,
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone || undefined,
         password,
         role,
-        companyDetails: { companyName }
+        companyDetails: role === 'seller' ? { companyName: (companyName ? companyName.trim() : trimmedName) } : undefined
       });
       if (user.role === 'seller') navigate('/seller/dashboard');
       else navigate('/');

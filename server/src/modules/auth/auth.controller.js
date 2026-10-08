@@ -6,21 +6,38 @@ exports.register = async (req, res, next) => {
     const validRoles = ['customer', 'seller', 'admin'];
     const assignedRole = role && validRoles.includes(role.toLowerCase()) ? role.toLowerCase() : 'customer';
 
-    const existingUser = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { phone }]
-    });
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    const cleanPhone = phone && typeof phone === 'string' && phone.trim() !== '' ? phone.trim() : null;
 
-    if (existingUser) {
+    if (!normalizedEmail) {
       return res.status(400).json({
         success: false,
-        message: 'A user with this email or phone number already exists.'
+        message: 'Please provide a valid email address.'
       });
     }
 
+    const emailExists = await User.findOne({ email: normalizedEmail });
+    if (emailExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email address already exists. Please sign in instead.'
+      });
+    }
+
+    if (cleanPhone) {
+      const phoneExists = await User.findOne({ phone: cleanPhone });
+      if (phoneExists) {
+        return res.status(400).json({
+          success: false,
+          message: 'An account with this phone number already exists. Please use a different phone number.'
+        });
+      }
+    }
+
     const user = await User.create({
-      name,
-      email: email.toLowerCase(),
-      phone,
+      name: (name || '').trim(),
+      email: normalizedEmail,
+      phone: cleanPhone || undefined,
       passwordHash: password,
       role: assignedRole,
       status: assignedRole === 'seller' ? 'pending_verification' : 'active',
@@ -39,7 +56,7 @@ exports.register = async (req, res, next) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        phone: user.phone,
+        phone: user.phone || '',
         role: user.role,
         status: user.status,
         companyDetails: user.companyDetails

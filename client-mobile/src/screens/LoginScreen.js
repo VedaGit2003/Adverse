@@ -79,21 +79,25 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleRegister = async () => {
-    if (!name || !email || !password) {
+    const trimmedName = (name || '').trim();
+    const trimmedEmail = (email || '').trim().toLowerCase();
+    const trimmedPhone = (phone || '').trim();
+
+    if (!trimmedName || !trimmedEmail || !password) {
       Alert.alert('Required', 'Please fill name, email and password.');
       return;
     }
     setLoading(true);
     try {
       const payload = {
-        name,
-        email,
+        name: trimmedName,
+        email: trimmedEmail,
         password,
-        phone,
+        phone: trimmedPhone || undefined,
         role,
         companyDetails: role === 'seller' ? {
-          companyName: companyName || name,
-          gstNumber: gstNumber || 'Unregistered',
+          companyName: companyName ? companyName.trim() : trimmedName,
+          gstNumber: gstNumber ? gstNumber.trim() : 'Unregistered',
           tradeLicense: '',
           address: ''
         } : undefined
