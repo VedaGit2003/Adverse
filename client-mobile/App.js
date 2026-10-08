@@ -4,7 +4,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform } from 'react-native';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import HomeScreen from './src/screens/HomeScreen';
@@ -18,6 +19,10 @@ const Stack = createNativeStackNavigator();
 
 function MainTabs() {
   const { isSeller } = useAuth();
+  const insets = useSafeAreaInsets();
+
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 16 : 0);
+  const tabHeight = 60 + bottomInset;
 
   return (
     <Tab.Navigator
@@ -28,8 +33,8 @@ function MainTabs() {
         tabBarStyle: {
           backgroundColor: '#ffffff',
           borderTopColor: '#e2e8f0',
-          height: 60,
-          paddingBottom: 8,
+          height: tabHeight,
+          paddingBottom: Math.max(bottomInset, 8),
           paddingTop: 8,
         },
         tabBarLabelStyle: {

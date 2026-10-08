@@ -9,9 +9,10 @@ import {
   ActivityIndicator,
   Linking,
   Alert,
-  Dimensions
+  Dimensions,
+  Platform
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import mobileApi from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +23,8 @@ const { width } = Dimensions.get('window');
 export default function HoardingDetailScreen({ route, navigation }) {
   const { hoardingId } = route.params;
   const { isAuthenticated, user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 16 : 0);
   const [hoarding, setHoarding] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
@@ -139,7 +142,7 @@ export default function HoardingDetailScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 110 + bottomInset }}>
         {/* Photo Gallery Carousel */}
         <View style={styles.photoContainer}>
           <Image source={{ uri: photos[activePhotoIdx] }} style={styles.mainPhoto} />
@@ -307,7 +310,7 @@ export default function HoardingDetailScreen({ route, navigation }) {
       </ScrollView>
 
       {/* Floating Bottom Booking Action Bar */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: 12 + bottomInset }]}>
         <View>
           <Text style={styles.bottomPriceLabel}>TOTAL BASE RENT</Text>
           <Text style={styles.bottomPrice}>

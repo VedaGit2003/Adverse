@@ -120,7 +120,7 @@ export default function MyBookingsScreen({ navigation }) {
             setRefreshing(true);
             fetchBookings();
           }}
-          contentContainerStyle={{ padding: 14 }}
+          contentContainerStyle={{ padding: 14, paddingBottom: 100 }}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="calendar-outline" size={44} color="#94a3b8" />
