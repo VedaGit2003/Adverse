@@ -32,7 +32,7 @@ export default function MyBookingsScreen({ navigation }) {
     if (!isAuthenticated) return;
     setLoading(true);
     try {
-      const res = await mobileApi.get('/bookings/my-bookings');
+      const res = await mobileApi.get('/bookings');
       setBookings(res.data.bookings || []);
     } catch (err) {
       console.warn('Failed to load bookings:', err);
@@ -131,7 +131,7 @@ export default function MyBookingsScreen({ navigation }) {
             </View>
           }
           renderItem={({ item }) => {
-            const h = item.hoarding;
+            const h = item.hoardingId || item.hoarding;
             const status = item.bookingStatus || 'pending_payment';
             const isPendingPayment = status === 'pending_payment';
             const isConfirmed = status === 'confirmed' || status === 'active';

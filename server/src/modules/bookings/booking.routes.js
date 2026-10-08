@@ -11,6 +11,7 @@ const { verifyToken, authorizeRoles } = require('../../middlewares/auth.middlewa
 
 router.post('/', verifyToken, createBooking);
 router.get('/', verifyToken, getMyBookings);
+router.get('/my-bookings', verifyToken, getMyBookings);
 router.get('/:id', verifyToken, getBookingById);
 router.put('/:id/status', verifyToken, authorizeRoles('seller', 'admin'), updateBookingStatus);
 router.put('/:id/creative', verifyToken, updateCampaignCreative);
