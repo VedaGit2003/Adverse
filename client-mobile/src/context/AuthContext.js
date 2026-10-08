@@ -1,12 +1,77 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import mobileApi, { setAuthToken } from '../api/client';
 
 const AuthContext = createContext(null);
+const TOKEN_KEY = 'adverse_token';
+const USER_KEY = 'adverse_user';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Restore authenticated session from persistent storage on startup
+  useEffect(() => {
+    let isMounted = true;
+
+    const restoreSession = async () => {
+      try {
+        const [storedToken, storedUser] = await Promise.all([
+          AsyncStorage.getItem(TOKEN_KEY),
+          AsyncStorage.getItem(USER_KEY)
+        ]);
+
+        if (storedToken && isMounted) {
+          setToken(storedToken);
+          setAuthToken(storedToken);
+
+          if (storedUser) {
+            try {
+              setUser(JSON.parse(storedUser));
+            } catch (err) {
+              console.warn('Error parsing cached user payload:', err);
+            }
+          }
+
+          // Background verification with backend
+          try {
+            const res = await mobileApi.get('/auth/me');
+            if (res.data?.user && isMounted) {
+              setUser(res.data.user);
+              await AsyncStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
+            }
+          } catch (apiErr) {
+            // Only invalidate session if the token is explicitly rejected (HTTP 401)
+            // If offline, connection timed out, or LAN lag occurred, keep session intact!
+            if (apiErr.response?.status === 401) {
+              console.log('Mobile session expired (401). Clearing storage.');
+              await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]).catch(() => {});
+              if (isMounted) {
+                setToken(null);
+                setUser(null);
+                setAuthToken(null);
+              }
+            } else {
+              console.log('Backend currently unreachable; maintaining cached mobile session.');
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to restore mobile session from storage:', e);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    restoreSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const login = async (email, password) => {
     const res = await mobileApi.post('/auth/login', { email, password });
@@ -14,6 +79,10 @@ export const AuthProvider = ({ children }) => {
     setToken(jwt);
     setUser(userData);
     setAuthToken(jwt);
+    await AsyncStorage.multiSet([
+      [TOKEN_KEY, jwt],
+      [USER_KEY, JSON.stringify(userData)]
+    ]);
     return userData;
   };
 
@@ -23,6 +92,10 @@ export const AuthProvider = ({ children }) => {
     setToken(jwt);
     setUser(userData);
     setAuthToken(jwt);
+    await AsyncStorage.multiSet([
+      [TOKEN_KEY, jwt],
+      [USER_KEY, JSON.stringify(userData)]
+    ]);
     return userData;
   };
 
@@ -32,13 +105,18 @@ export const AuthProvider = ({ children }) => {
     setToken(jwt);
     setUser(userData);
     setAuthToken(jwt);
+    await AsyncStorage.multiSet([
+      [TOKEN_KEY, jwt],
+      [USER_KEY, JSON.stringify(userData)]
+    ]);
     return userData;
   };
 
-  const logout = () => {
+  const logout = async () => {
     setToken(null);
     setUser(null);
     setAuthToken(null);
+    await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]).catch(() => {});
   };
 
   const refreshUser = async () => {
@@ -47,6 +125,7 @@ export const AuthProvider = ({ children }) => {
       const res = await mobileApi.get('/auth/me');
       if (res.data?.user) {
         setUser(res.data.user);
+        await AsyncStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
         return res.data.user;
       }
     } catch (err) {
@@ -58,6 +137,7 @@ export const AuthProvider = ({ children }) => {
     const res = await mobileApi.put('/auth/profile', profileData);
     if (res.data?.user) {
       setUser(res.data.user);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
       return res.data.user;
     }
   };

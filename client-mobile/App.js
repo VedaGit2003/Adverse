@@ -5,7 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, LogBox } from 'react-native';
+import { Platform, LogBox, View, ActivityIndicator } from 'react-native';
 
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated and will be removed in a future release',
@@ -85,16 +85,32 @@ function MainTabs() {
   );
 }
 
+function RootNavigator() {
+  const { loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' }}>
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
+
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="HoardingDetail" component={HoardingDetailScreen} />
+    </Stack.Navigator>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
         <NavigationContainer>
-          <StatusBar style="light" />
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="MainTabs" component={MainTabs} />
-            <Stack.Screen name="HoardingDetail" component={HoardingDetailScreen} />
-          </Stack.Navigator>
+          <StatusBar style="dark" />
+          <RootNavigator />
         </NavigationContainer>
       </AuthProvider>
     </SafeAreaProvider>

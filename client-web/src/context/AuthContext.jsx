@@ -25,7 +25,13 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('adverse_user', JSON.stringify(res.data.user));
           }
         } catch (err) {
-          logout();
+          // Only log out if token is truly invalid/expired (HTTP 401)
+          // Do NOT log out on network lag, offline status, or server reconnections
+          if (err.response?.status === 401) {
+            logout();
+          } else {
+            console.warn('Backend temporarily unreachable during session check; preserving stored session.');
+          }
         }
       }
       setLoading(false);

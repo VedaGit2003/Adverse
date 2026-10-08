@@ -106,8 +106,11 @@ exports.login = async (req, res, next) => {
 
 exports.getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id);
-    res.status(200).json({ success: true, user });
+    let user = await User.findById(req.user.id || req.user._id);
+    if (!user && req.user.email) {
+      user = await User.findOne({ email: req.user.email });
+    }
+    res.status(200).json({ success: true, user: user || req.user });
   } catch (error) {
     next(error);
   }

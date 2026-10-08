@@ -22,7 +22,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      if (localStorage.getItem('adverse_token')) {
+      const url = error.config?.url || '';
+      if (!url.includes('/auth/login') && !url.includes('/auth/register') && !url.includes('/auth/sso')) {
         localStorage.removeItem('adverse_token');
         localStorage.removeItem('adverse_user');
       }

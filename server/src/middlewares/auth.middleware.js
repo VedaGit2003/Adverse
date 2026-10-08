@@ -18,7 +18,15 @@ const verifyToken = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-passwordHash');
+    let user = null;
+    if (decoded.id) {
+      user = await User.findById(decoded.id).select('-passwordHash');
+    }
+
+    // Resilient fallback: If database was restarted or re-seeded, check decoded.email
+    if (!user && decoded.email) {
+      user = await User.findOne({ email: decoded.email.toLowerCase() }).select('-passwordHash');
+    }
 
     if (!user) {
       return res.status(401).json({
