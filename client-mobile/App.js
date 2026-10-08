@@ -15,17 +15,8 @@ import LoginScreen from './src/screens/LoginScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
-function HomeStack() {
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="HomeFeed" component={HomeScreen} />
-      <Stack.Screen name="HoardingDetail" component={HoardingDetailScreen} />
-    </Stack.Navigator>
-  );
-}
-
 function MainTabs() {
-  const { isSeller, isAdmin } = useAuth();
+  const { isSeller } = useAuth();
 
   return (
     <Tab.Navigator
@@ -59,10 +50,26 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Explore" component={HomeStack} options={{ tabBarLabel: 'Discover' }} />
-      <Tab.Screen name="BookingsTab" component={MyBookingsScreen} options={{ tabBarLabel: 'My Bookings' }} />
-      <Tab.Screen name="SellerTab" component={SellerDashboardScreen} options={{ tabBarLabel: 'Seller Desk' }} />
-      <Tab.Screen name="Account" component={LoginScreen} options={{ tabBarLabel: 'Account' }} />
+      <Tab.Screen
+        name="Explore"
+        component={HomeScreen}
+        options={{ tabBarLabel: 'Discover' }}
+      />
+      <Tab.Screen
+        name="BookingsTab"
+        component={MyBookingsScreen}
+        options={{ tabBarLabel: 'My Bookings' }}
+      />
+      <Tab.Screen
+        name="SellerTab"
+        component={SellerDashboardScreen}
+        options={{ tabBarLabel: 'Seller Desk' }}
+      />
+      <Tab.Screen
+        name="Account"
+        component={LoginScreen}
+        options={{ tabBarLabel: 'Account' }}
+      />
     </Tab.Navigator>
   );
 }
@@ -72,7 +79,10 @@ export default function App() {
     <AuthProvider>
       <NavigationContainer>
         <StatusBar style="light" />
-        <MainTabs />
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="MainTabs" component={MainTabs} />
+          <Stack.Screen name="HoardingDetail" component={HoardingDetailScreen} />
+        </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>
   );

@@ -1,14 +1,13 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
 
-export const API_BASE_URL = Platform.select({
-  android: 'http://10.0.2.2:3000/api',
-  ios: 'http://localhost:3000/api',
-  default: 'http://localhost:3000/api'
-});
+// Host IP specified by user for physical Android/iOS devices & simulator
+export const LAN_HOST = '192.168.29.205';
+export const PORT = 3000;
+export const API_BASE_URL = `http://${LAN_HOST}:${PORT}/api`;
 
 const mobileApi = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json'
   }
