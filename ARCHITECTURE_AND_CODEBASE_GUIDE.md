@@ -329,3 +329,4 @@ npx expo start --lan
 | **🛍️ Client (Advertiser)** | `client@brands.com` | `Client@123` | Discover sites, book hoardings, upload campaign artwork |
 
 *(Both Web and Mobile feature 1-tap demo buttons on their login screens for instant sign-in!)*
+

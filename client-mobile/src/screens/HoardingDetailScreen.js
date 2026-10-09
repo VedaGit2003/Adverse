@@ -88,11 +88,11 @@ export default function HoardingDetailScreen({ route, navigation }) {
 
     Alert.alert(
       'Reserve Hoarding Campaign',
-      `Submit booking request for "${hoarding.title}" at ₹${(hoarding.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo?`,
+      `Submit booking request for "${hoarding.title}" at ₹${(hoarding.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo?\n\n• The media owner must approve your request first.\n• Once approved, the payment option will be unlocked.\n• Payment starts the 3-day mounting window.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Confirm Booking Request',
+          text: 'Submit Request',
           onPress: async () => {
             try {
               const startDate = new Date();
@@ -109,8 +109,8 @@ export default function HoardingDetailScreen({ route, navigation }) {
 
               if (res.data.success) {
                 Alert.alert(
-                  'Booking Initiated! 🎉',
-                  'Your reservation request has been submitted. Check "My Bookings" tab to view payment and invoice instructions.',
+                  'Request Submitted! 📋',
+                  'Your booking request has been sent to the media owner for approval. Once approved, you can complete payment in "My Bookings" to start the 3-day mounting window.',
                   [{ text: 'View Bookings', onPress: () => navigation.navigate('BookingsTab') }]
                 );
               }

@@ -30,9 +30,11 @@ import {
   FileText,
   Map as MapIcon,
   Compass,
-  LayoutGrid
+  LayoutGrid,
+  CalendarCheck
 } from 'lucide-react';
 import HoardingMap from '../../components/HoardingMap';
+import MountingTracker from '../../components/MountingTracker';
 
 export default function SellerDashboardPage() {
   const { user, updateUser, refreshUser } = useAuth();
@@ -77,9 +79,27 @@ export default function SellerDashboardPage() {
   const fileInputRef = useRef(null);
   const [manualPhotoUrl, setManualPhotoUrl] = useState('');
 
+  const [sellerActiveTab, setSellerActiveTab] = useState('inventory'); // 'inventory' | 'bookings' | 'payments'
+  const [approvingBookingId, setApprovingBookingId] = useState(null);
+
   const showToast = (message, type = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 4000);
+  };
+
+  const handleSellerApproval = async (bookingId, action) => {
+    setApprovingBookingId(bookingId);
+    try {
+      const res = await api.put(`/bookings/${bookingId}/seller-approval`, { action });
+      if (res.data.success) {
+        showToast(action === 'approve' ? 'Booking approved! Payment option unlocked for customer.' : 'Booking request declined.');
+        fetchData(true);
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to process approval', 'error');
+    } finally {
+      setApprovingBookingId(null);
+    }
   };
 
   const fetchData = async (silent = false) => {
@@ -755,11 +775,79 @@ export default function SellerDashboardPage() {
             </div>
             <div className="text-xs text-slate-500 mt-1">Reconciled payments</div>
           </div>
+        {/* Navigation Tabs Bar */}
+        <div className="flex border-b border-slate-200 overflow-x-auto gap-2 pb-1">
+          <button
+            onClick={() => setSellerActiveTab('inventory')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition ${
+              sellerActiveTab === 'inventory'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>Hoarding Inventory</span>
+            <span
+              className={`ml-1 px-2 py-0.5 rounded-full text-xs font-black ${
+                sellerActiveTab === 'inventory' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {(hoardings || []).length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSellerActiveTab('bookings')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition ${
+              sellerActiveTab === 'bookings'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CalendarCheck className="w-4 h-4" />
+            <span>Bookings & Mounting Pipeline</span>
+            <span
+              className={`ml-1 px-2 py-0.5 rounded-full text-xs font-black ${
+                (bookings || []).filter((b) => b.bookingStatus === 'requested').length > 0
+                  ? 'bg-amber-400 text-amber-950 animate-pulse font-extrabold'
+                  : sellerActiveTab === 'bookings'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {(bookings || []).length}
+            </span>
+            {(bookings || []).filter((b) => b.bookingStatus === 'requested').length > 0 && (
+              <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full uppercase font-black">
+                {(bookings || []).filter((b) => b.bookingStatus === 'requested').length} New Action
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setSellerActiveTab('payments')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition ${
+              sellerActiveTab === 'payments'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>Offline Cheques & Bank Desk</span>
+            <span
+              className={`ml-1 px-2 py-0.5 rounded-full text-xs font-black ${
+                sellerActiveTab === 'payments' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {(payments || []).filter((p) => p?.paymentStatus === 'pending').length}
+            </span>
+          </button>
         </div>
 
         {/* ============================================================== */}
-        {/* SECTION: SELLER'S HOARDING INVENTORY (UPDATE SPECS, PHOTOS, PRICE, STATUS) */}
+        {/* TAB 1: SELLER'S HOARDING INVENTORY */}
         {/* ============================================================== */}
+        {sellerActiveTab === 'inventory' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -994,10 +1082,188 @@ export default function SellerDashboardPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* ============================================================== */}
-        {/* SECTION: OFFLINE CHEQUE / NEFT VERIFICATION DESK */}
+        {/* TAB 2: BOOKINGS & 3-DAY MOUNTING PIPELINE */}
         {/* ============================================================== */}
+        {sellerActiveTab === 'bookings' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <CalendarCheck className="w-5 h-5 text-indigo-600" />
+                  Bookings, Approvals & Mounting Pipeline ({bookings.length})
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Review advertiser requests, approve reservations to unlock client payment, and coordinate the 3-day mounting window.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="px-3 py-1 bg-amber-50 text-amber-800 font-bold rounded-xl border border-amber-200">
+                  {(bookings || []).filter((b) => b.bookingStatus === 'requested').length} Pending Approval
+                </span>
+                <span className="px-3 py-1 bg-indigo-50 text-indigo-800 font-bold rounded-xl border border-indigo-200">
+                  {(bookings || []).filter((b) => ['mounting_window', 'verification_pending'].includes(b.bookingStatus)).length} In Mounting Window
+                </span>
+                <span className="px-3 py-1 bg-emerald-50 text-emerald-800 font-bold rounded-xl border border-emerald-200">
+                  {(bookings || []).filter((b) => b.bookingStatus === 'active').length} Active
+                </span>
+              </div>
+            </div>
+
+            {bookings.length === 0 ? (
+              <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
+                <CalendarCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <h4 className="text-base font-bold text-slate-800">No Booking Requests Yet</h4>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                  When advertisers reserve your listed hoardings, their requests will appear here for your review and approval.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {bookings.map((b) => {
+                  const isRequested = b.bookingStatus === 'requested';
+                  const isApproved = b.bookingStatus === 'approved';
+                  const isMountingWindow = b.bookingStatus === 'mounting_window';
+                  const isVerificationPending = b.bookingStatus === 'verification_pending';
+                  const isActive = b.bookingStatus === 'active';
+
+                  return (
+                    <div
+                      key={b._id}
+                      className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden p-6 space-y-5"
+                    >
+                      {/* Top Header */}
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                        <div className="flex items-start gap-4">
+                          <img
+                            src={
+                              b.hoardingId?.photos?.[0] ||
+                              'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=400&q=80'
+                            }
+                            alt="Hoarding"
+                            className="w-20 h-16 rounded-xl object-cover border border-slate-200 shadow-2xs shrink-0"
+                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
+                                #{b.bookingNumber}
+                              </span>
+                              <span className="text-xs text-slate-400">•</span>
+                              <span className="text-xs font-semibold text-slate-500">
+                                {b.campaignName || 'Brand Awareness Campaign'}
+                              </span>
+                            </div>
+                            <h3 className="text-base font-black text-slate-900 mt-1">
+                              {b.hoardingId?.title || 'Hoarding Space'}
+                            </h3>
+                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                              <span className="font-semibold text-slate-700">{b.hoardingId?.location?.city || 'Kolkata'}</span>
+                              <span>•</span>
+                              <span>{b.durationDays} Days</span>
+                              <span>•</span>
+                              <span>
+                                {new Date(b.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} —{' '}
+                                {new Date(b.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Advertiser info & Amount */}
+                        <div className="flex items-center gap-6">
+                          <div className="text-xs">
+                            <span className="text-[10px] font-bold uppercase text-slate-400 block">Advertiser</span>
+                            <div className="font-bold text-slate-900">{b.customerId?.name || 'Customer'}</div>
+                            <div className="text-slate-500">{b.customerId?.phone || b.customerId?.email}</div>
+                            {b.customerId?.companyDetails?.companyName && (
+                              <div className="text-indigo-600 font-semibold">{b.customerId.companyDetails.companyName}</div>
+                            )}
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold uppercase text-slate-400 block">Gross Rent</span>
+                            <div className="text-lg font-black text-slate-900">
+                              ₹{b.totalAmount?.toLocaleString('en-IN')}
+                            </div>
+                            <div className="text-[10px] font-bold text-emerald-600 uppercase">
+                              Payment: {b.paymentStatus}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ACTION BAR: PENDING APPROVAL REQUEST */}
+                      {isRequested && (
+                        <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                              <Clock className="w-5 h-5 animate-pulse" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-black uppercase tracking-wider text-amber-900">
+                                New Advertiser Booking Request
+                              </div>
+                              <p className="text-xs text-amber-700 mt-0.5">
+                                Advertiser has reserved this site. Review dates and approve to unlock the payment option for them.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => handleSellerApproval(b._id, 'reject')}
+                              disabled={approvingBookingId === b._id}
+                              className="px-4 py-2 border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold rounded-xl transition"
+                            >
+                              Decline
+                            </button>
+                            <button
+                              onClick={() => handleSellerApproval(b._id, 'approve')}
+                              disabled={approvingBookingId === b._id}
+                              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-xs transition flex items-center gap-1.5"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>{approvingBookingId === b._id ? 'Approving...' : 'Approve Booking Request'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* APPROVED STATE (Awaiting client pay) */}
+                      {isApproved && (
+                        <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-4 flex items-center gap-3 text-xs text-blue-900">
+                          <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />
+                          <div>
+                            <strong>Approved by You!</strong> Waiting for advertiser to complete payment. Once payment is recorded, the 3-Day Mounting Window will automatically start.
+                          </div>
+                        </div>
+                      )}
+
+                      {/* MOUNTING TRACKER PIPELINE */}
+                      {(isMountingWindow || isVerificationPending || isActive) && (
+                        <div>
+                          <MountingTracker
+                            booking={b}
+                            userRole="seller"
+                            onUpdate={() => fetchData(true)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 3: OFFLINE CHEQUE / NEFT VERIFICATION DESK */}
+        {/* ============================================================== */}
+        {sellerActiveTab === 'payments' && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -1099,6 +1365,7 @@ export default function SellerDashboardPage() {
             </table>
           </div>
         </div>
+        )}
       </div>
 
       {/* ============================================================== */}

@@ -26,9 +26,13 @@ import {
   Maximize2,
   Map as MapIcon,
   LayoutGrid,
-  Compass
+  Compass,
+  Edit3,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import HoardingMap from '../../components/HoardingMap';
+import MountingTracker from '../../components/MountingTracker';
 
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState('hoardings'); // 'hoardings' | 'bookings' | 'users' | 'sellers'
@@ -50,6 +54,58 @@ export default function AdminDashboardPage() {
   const [bookingFilterStatus, setBookingFilterStatus] = useState('active'); // default to active bookings
   const [bookingSearch, setBookingSearch] = useState('');
   const [bookingPaymentFilter, setBookingPaymentFilter] = useState('all');
+  const [expandedAdminBookingId, setExpandedAdminBookingId] = useState(null);
+  const [overrideModalBooking, setOverrideModalBooking] = useState(null);
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const [overrideForm, setOverrideForm] = useState({
+    bookingStatus: '',
+    paymentStatus: '',
+    flexPickupStatus: '',
+    mountingStatus: '',
+    confirmationStatus: '',
+    proofPhotoUrl: '',
+    proofCaptureDateTime: '',
+    subscriptionStartDate: '',
+    subscriptionEndDate: '',
+    adminNotes: ''
+  });
+
+  const openOverrideModal = (b) => {
+    setOverrideModalBooking(b);
+    setOverrideForm({
+      bookingStatus: b.bookingStatus || 'requested',
+      paymentStatus: b.paymentStatus || 'pending',
+      flexPickupStatus: b.mountingDetails?.flexPickupStatus || 'pending',
+      mountingStatus: b.mountingDetails?.mountingStatus || 'pending',
+      confirmationStatus: b.mountingDetails?.confirmationStatus || 'pending',
+      proofPhotoUrl: b.mountingDetails?.proofPhotoUrl || '',
+      proofCaptureDateTime: b.mountingDetails?.proofCaptureDateTime || '',
+      subscriptionStartDate: b.subscriptionStartDate
+        ? new Date(b.subscriptionStartDate).toISOString().split('T')[0]
+        : '',
+      subscriptionEndDate: b.subscriptionEndDate
+        ? new Date(b.subscriptionEndDate).toISOString().split('T')[0]
+        : '',
+      adminNotes: ''
+    });
+  };
+
+  const handleAdminOverrideSubmit = async (e) => {
+    e.preventDefault();
+    setOverrideLoading(true);
+    try {
+      const res = await api.put(`/bookings/${overrideModalBooking._id}/admin-override`, overrideForm);
+      if (res.data.success) {
+        showToast('Admin override applied successfully!');
+        setOverrideModalBooking(null);
+        fetchAllData(true);
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to apply admin override', 'error');
+    } finally {
+      setOverrideLoading(false);
+    }
+  };
 
   // Users tab state
   const [users, setUsers] = useState([]);
@@ -817,7 +873,8 @@ export default function AdminDashboardPage() {
                       </tr>
                     ) : (
                       filteredBookings.map((b) => (
-                        <tr key={b._id} className="hover:bg-slate-50/70 transition">
+                        <React.Fragment key={b._id}>
+                          <tr className="hover:bg-slate-50/70 transition">
                           {/* Booking & Campaign */}
                           <td className="py-4 px-4">
                             <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
@@ -921,26 +978,84 @@ export default function AdminDashboardPage() {
                             </div>
                           </td>
 
-                          {/* Booking State Badge */}
+                          {/* Booking State Badge & Admin Actions */}
                           <td className="py-4 px-4 text-right whitespace-nowrap">
-                            {['active', 'confirmed'].includes(b.bookingStatus) ? (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-xs">
-                                <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                                Active
-                              </span>
-                            ) : b.bookingStatus === 'completed' ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
-                                Completed
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
-                                {b.bookingStatus}
-                              </span>
-                            )}
+                            <div className="flex flex-col items-end gap-2">
+                              <div>
+                                {['active', 'confirmed'].includes(b.bookingStatus) ? (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-xs">
+                                    <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                                    Active
+                                  </span>
+                                ) : b.bookingStatus === 'mounting_window' ? (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">
+                                    Mounting Window (3-Days)
+                                  </span>
+                                ) : b.bookingStatus === 'verification_pending' ? (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-900 border border-purple-200 animate-pulse">
+                                    Verify Proof (4-Hours)
+                                  </span>
+                                ) : b.bookingStatus === 'approved' ? (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-200">
+                                    Approved (Pay Active)
+                                  </span>
+                                ) : b.bookingStatus === 'requested' ? (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                                    Pending Approval
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+                                    {b.bookingStatus}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() =>
+                                    setExpandedAdminBookingId(
+                                      expandedAdminBookingId === b._id ? null : b._id
+                                    )
+                                  }
+                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1"
+                                  title="View 3-Phase Mounting Pipeline"
+                                >
+                                  <span>Pipeline</span>
+                                  {expandedAdminBookingId === b._id ? (
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+
+                                <button
+                                  onClick={() => openOverrideModal(b)}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition flex items-center gap-1 border border-indigo-200"
+                                  title="Admin Override All Statuses & Phases"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Override</span>
+                                </button>
+                              </div>
+                            </div>
                           </td>
                         </tr>
-                      ))
-                    )}
+
+                        {/* Expandable Mounting Tracker Row for Admin */}
+                        {expandedAdminBookingId === b._id && (
+                          <tr key={`${b._id}-expanded`} className="bg-slate-50/80">
+                            <td colSpan={7} className="p-4">
+                              <MountingTracker
+                                booking={b}
+                                userRole="admin"
+                                onUpdate={() => fetchAllData(true)}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))
+                  )}
                   </tbody>
                 </table>
               </div>
@@ -1446,6 +1561,197 @@ export default function AdminDashboardPage() {
                 {selectedHoardingModal.isApprovedByAdmin ? 'Revoke Approval' : 'Approve for Marketplace'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* ADMIN OVERRIDE & LIFECYCLE EDITOR MODAL */}
+      {/* ============================================================== */}
+      {overrideModalBooking && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setOverrideModalBooking(null)}
+              className="absolute right-5 top-5 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase bg-indigo-100 text-indigo-800">
+                Super Admin Rights
+              </span>
+              <span className="text-xs text-slate-400">• Full Status & Phase Override</span>
+            </div>
+
+            <h3 className="text-xl font-black text-slate-900">
+              Override Booking #{overrideModalBooking.bookingNumber}
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5 mb-5">
+              Super Admin has full authority to edit booking lifecycle status, advance or revert mounting phases, adjust dates, and force activation.
+            </p>
+
+            <form onSubmit={handleAdminOverrideSubmit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Overall Booking Status</label>
+                  <select
+                    value={overrideForm.bookingStatus}
+                    onChange={(e) => setOverrideForm({ ...overrideForm, bookingStatus: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="requested">requested (Waiting Seller Approval)</option>
+                    <option value="approved">approved (Payment Option Unlocked)</option>
+                    <option value="mounting_window">mounting_window (3-Day Mounting Window)</option>
+                    <option value="verification_pending">verification_pending (4-Hour Verification)</option>
+                    <option value="active">active (Subscription Officially Live)</option>
+                    <option value="completed">completed (Campaign Expired)</option>
+                    <option value="rejected">rejected (Request Declined)</option>
+                    <option value="cancelled">cancelled</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Payment Status</label>
+                  <select
+                    value={overrideForm.paymentStatus}
+                    onChange={(e) => setOverrideForm({ ...overrideForm, paymentStatus: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="pending">pending</option>
+                    <option value="paid">paid</option>
+                    <option value="partially_paid">partially_paid</option>
+                    <option value="refunded">refunded</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 3 Phases Overrides */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Mounting Pipeline Phases
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 text-[11px]">Phase 1: Flex Pick up</label>
+                    <select
+                      value={overrideForm.flexPickupStatus}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, flexPickupStatus: e.target.value })}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-medium text-xs"
+                    >
+                      <option value="pending">pending</option>
+                      <option value="in_progress">in_progress</option>
+                      <option value="completed">completed</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 text-[11px]">Phase 2: Mounting</label>
+                    <select
+                      value={overrideForm.mountingStatus}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, mountingStatus: e.target.value })}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-medium text-xs"
+                    >
+                      <option value="pending">pending</option>
+                      <option value="in_progress">in_progress</option>
+                      <option value="completed">completed</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1 text-[11px]">Phase 3: Confirmation</label>
+                    <select
+                      value={overrideForm.confirmationStatus}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, confirmationStatus: e.target.value })}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg font-medium text-xs"
+                    >
+                      <option value="pending">pending</option>
+                      <option value="proof_uploaded">proof_uploaded</option>
+                      <option value="verified">verified</option>
+                      <option value="rejected">rejected</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Proof Photo & Capture Date/Time */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Proof Photo URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={overrideForm.proofPhotoUrl}
+                    onChange={(e) => setOverrideForm({ ...overrideForm, proofPhotoUrl: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Capture Date & Time</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 10 Oct 2026, 02:30 PM"
+                    value={overrideForm.proofCaptureDateTime}
+                    onChange={(e) => setOverrideForm({ ...overrideForm, proofCaptureDateTime: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Subscription Start Date & End Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Subscription Start Date</label>
+                  <input
+                    type="date"
+                    value={overrideForm.subscriptionStartDate}
+                    onChange={(e) => setOverrideForm({ ...overrideForm, subscriptionStartDate: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Subscription End Date</label>
+                  <input
+                    type="date"
+                    value={overrideForm.subscriptionEndDate}
+                    onChange={(e) => setOverrideForm({ ...overrideForm, subscriptionEndDate: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Admin Audit Notes</label>
+                <input
+                  type="text"
+                  placeholder="Reason for administrative status override..."
+                  value={overrideForm.adminNotes}
+                  onChange={(e) => setOverrideForm({ ...overrideForm, adminNotes: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setOverrideModalBooking(null)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={overrideLoading}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition"
+                >
+                  {overrideLoading ? 'Applying...' : 'Apply Admin Override'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

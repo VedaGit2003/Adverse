@@ -90,10 +90,7 @@ export default function HoardingDetailPage() {
         hoardingId: hoarding._id,
         startDate,
         endDate,
-        bookingType: 'offline',
-        paymentMode,
-        transactionReference: transactionRef,
-        bankName,
+        bookingType: 'online',
         campaignName,
         clientNotes,
         includePrinting,
@@ -137,18 +134,25 @@ export default function HoardingDetailPage() {
             </div>
             <h2 className="text-2xl font-extrabold text-slate-900">Booking Request Placed!</h2>
             <p className="text-sm text-slate-600 mt-2">
-              Booking Reference: <strong className="text-slate-900">{bookingSuccess.bookingNumber}</strong>
+              Booking Reference: <strong className="text-slate-900 font-mono">#{bookingSuccess.bookingNumber}</strong>
             </p>
             <div className="mt-6 p-4 bg-slate-50 rounded-xl text-left text-xs text-slate-600 space-y-2 border border-slate-200">
+              <div className="flex justify-between">
+                <span>Duration:</span>
+                <strong className="text-slate-900">{bookingSuccess.durationDays} Days</strong>
+              </div>
               <div className="flex justify-between">
                 <span>Total Amount:</span>
                 <strong className="text-slate-900">₹{bookingSuccess.totalAmount.toLocaleString('en-IN')}</strong>
               </div>
               <div className="flex justify-between">
-                <span>Payment Mode:</span>
-                <strong className="capitalize">{paymentMode.replace(/_/g, ' ')}</strong>
+                <span>Current Status:</span>
+                <strong className="text-amber-700 font-bold uppercase">Requested (Awaiting Seller Approval)</strong>
               </div>
             </div>
+            <p className="text-xs text-slate-500 mt-4 leading-relaxed">
+              The media owner has been notified. As soon as they review and approve your request, the <strong>Pay Now</strong> option will be unlocked in your <strong>My Bookings</strong> dashboard.
+            </p>
             <div className="mt-6 flex gap-3 justify-center">
               <Link to="/my-bookings" className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm rounded-xl">
                 Go to My Bookings
@@ -287,30 +291,15 @@ export default function HoardingDetailPage() {
                     <input type="text" placeholder="e.g. Durga Puja Launch" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-medium" />
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 text-xs">
-                    <label className="block text-slate-600 font-semibold mb-1.5">Offline Payment Mode</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {['neft_rtgs_upi', 'cheque', 'cash', 'online_gateway'].map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setPaymentMode(m)}
-                          className={`p-2 rounded-lg border text-left font-semibold transition-all ${
-                            paymentMode === m ? 'bg-brand-50 border-brand-500 text-brand-700' : 'bg-slate-50 border-slate-200 text-slate-600'
-                          }`}
-                        >
-                          {m === 'neft_rtgs_upi' ? 'NEFT/UPI' : m === 'cheque' ? 'Bank Cheque' : m === 'cash' ? 'Cash at Desk' : 'Online'}
-                        </button>
-                      ))}
+                  {/* Flow Guide Notice */}
+                  <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-100 text-xs text-indigo-900 space-y-1">
+                    <div className="font-bold flex items-center gap-1 text-indigo-950">
+                      <span>📌 Booking & Approval Journey:</span>
                     </div>
+                    <p className="text-[11px] text-indigo-800 leading-relaxed">
+                      1. Submit request ➔ 2. Site owner reviews & approves ➔ 3. Payment unlocks in your portal ➔ 4. 3-Day Mounting window begins!
+                    </p>
                   </div>
-
-                  {paymentMode !== 'online_gateway' && (
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 text-xs">
-                      <input type="text" placeholder="Cheque / UTR Reference #" value={transactionRef} onChange={(e) => setTransactionRef(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg p-2 font-medium" />
-                      <input type="text" placeholder="Bank Name" value={bankName} onChange={(e) => setBankName(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg p-2 font-medium" />
-                    </div>
-                  )}
 
                   <div className="pt-3 border-t border-slate-100 text-xs space-y-1.5">
                     <div className="flex justify-between text-slate-500">
@@ -318,7 +307,7 @@ export default function HoardingDetailPage() {
                       <strong className="text-slate-800">{durationDays} days</strong>
                     </div>
                     <div className="flex justify-between text-sm pt-2 border-t border-slate-200 font-extrabold text-slate-900">
-                      <span>Total Payable:</span>
+                      <span>Estimated Total:</span>
                       <span className="text-brand-600">₹{grandTotal.toLocaleString('en-IN')}</span>
                     </div>
                   </div>
@@ -326,10 +315,10 @@ export default function HoardingDetailPage() {
                   <button
                     type="submit"
                     disabled={bookingLoading || durationDays <= 0}
-                    className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <CreditCard className="w-4 h-4" />
-                    Place Offline Booking Request
+                    <Calendar className="w-4 h-4" />
+                    <span>{bookingLoading ? 'Submitting...' : 'Submit Booking Request for Approval'}</span>
                   </button>
                 </form>
               </div>

@@ -23,12 +23,21 @@ const PaymentSchema = new mongoose.Schema(
     },
     paymentMode: {
       type: String,
-      enum: ['online_gateway', 'cash', 'cheque', 'neft_rtgs_upi'],
+      enum: [
+        'online_gateway',
+        'online_upi',
+        'online_card',
+        'cash',
+        'cheque',
+        'neft_rtgs_upi',
+        'offline_cheque',
+        'offline_neft'
+      ],
       required: true
     },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'verified', 'rejected'],
+      enum: ['pending', 'verified', 'rejected', 'paid'],
       default: 'pending',
       index: true
     },

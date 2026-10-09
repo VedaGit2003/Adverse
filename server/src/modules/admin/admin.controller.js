@@ -112,7 +112,7 @@ exports.getBookingsAdmin = async (req, res, next) => {
     const filter = {};
 
     if (status === 'active') {
-      filter.bookingStatus = { $in: ['active', 'confirmed'] };
+      filter.bookingStatus = { $in: ['active', 'confirmed', 'mounting_window', 'verification_pending'] };
     } else if (status && status !== 'all') {
       filter.bookingStatus = status;
     }
@@ -128,12 +128,44 @@ exports.getBookingsAdmin = async (req, res, next) => {
       .populate('hoardingId', 'title location dimensions lightingType photos pricing')
       .populate('customerId', 'name email phone companyDetails')
       .populate('sellerId', 'name email phone companyDetails')
+      .populate('mountingDetails.flexPickupUpdatedBy', 'name role')
+      .populate('mountingDetails.mountingUpdatedBy', 'name role')
+      .populate('mountingDetails.proofUploadedBy', 'name role')
       .sort({ createdAt: -1 });
+
+    // Check for auto-verification of 4-hour window expirations
+    const now = new Date();
+    const updatedBookings = await Promise.all(
+      bookings.map(async (b) => {
+        if (
+          b.bookingStatus === 'verification_pending' &&
+          b.mountingDetails?.verificationWindowExpiresAt &&
+          now >= new Date(b.mountingDetails.verificationWindowExpiresAt)
+        ) {
+          b.bookingStatus = 'active';
+          b.mountingDetails.confirmationStatus = 'verified';
+          const startDate = new Date(b.mountingDetails.verificationWindowExpiresAt);
+          b.subscriptionStartDate = startDate;
+          b.subscriptionEndDate = new Date(
+            startDate.getTime() + (b.durationDays || 30) * 24 * 60 * 60 * 1000
+          );
+          b.timeline.push({
+            event: 'auto_verified',
+            title: 'Auto-Verified After 4-Hour Window',
+            description: 'Customer 4-hour verification window elapsed. Subscription officially initiated.',
+            performedByRole: 'system',
+            timestamp: new Date()
+          });
+          await b.save();
+        }
+        return b;
+      })
+    );
 
     res.status(200).json({
       success: true,
-      count: bookings.length,
-      bookings
+      count: updatedBookings.length,
+      bookings: updatedBookings
     });
   } catch (error) {
     next(error);

@@ -22,6 +22,259 @@ import MobileHoardingMap from '../components/MobileHoardingMap';
 
 const { width } = Dimensions.get('window');
 
+// 3-Phase Mounting Tracker for Seller Desk
+function SellerMountingTracker({ booking, onRefresh, onOpenProofModal }) {
+  const [timeLeftMounting, setTimeLeftMounting] = useState('');
+  const [timeLeftVerification, setTimeLeftVerification] = useState('');
+  const [updatingPhase, setUpdatingPhase] = useState(null);
+
+  const m = booking?.mountingDetails || {};
+  const isMountingWindow = booking.bookingStatus === 'mounting_window';
+  const isVerificationPending = booking.bookingStatus === 'verification_pending';
+  const isActive = booking.bookingStatus === 'active';
+
+  useEffect(() => {
+    const updateCountdowns = () => {
+      // 3-Day Mounting Window Countdown
+      if (m.windowEndsAt && (isMountingWindow || isVerificationPending)) {
+        const diff = new Date(m.windowEndsAt) - new Date();
+        if (diff > 0) {
+          const hours = Math.floor(diff / (1000 * 60 * 60));
+          const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          setTimeLeftMounting(`${hours}h ${mins}m`);
+        } else {
+          setTimeLeftMounting('Elapsed');
+        }
+      }
+
+      // 4-Hour Customer Verification Countdown
+      if (m.verificationWindowExpiresAt && isVerificationPending) {
+        const diff = new Date(m.verificationWindowExpiresAt) - new Date();
+        if (diff > 0) {
+          const hours = Math.floor(diff / (1000 * 60 * 60));
+          const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          const secs = Math.floor((diff % (1000 * 60)) / 1000);
+          setTimeLeftVerification(`${hours}h ${mins}m ${secs}s`);
+        } else {
+          setTimeLeftVerification('Expired (Auto-Activating)');
+        }
+      }
+    };
+
+    updateCountdowns();
+    const interval = setInterval(updateCountdowns, 1000);
+    return () => clearInterval(interval);
+  }, [m.windowEndsAt, m.verificationWindowExpiresAt, isMountingWindow, isVerificationPending]);
+
+  const handleUpdatePhase = async (phase, status) => {
+    setUpdatingPhase(phase);
+    try {
+      await mobileApi.put(`/bookings/${booking._id}/mounting-phase`, { phase, status });
+      Alert.alert(
+        'Phase Updated',
+        `Phase marked as ${status === 'completed' ? 'Completed' : 'In Progress'}.`
+      );
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to update mounting phase.');
+    } finally {
+      setUpdatingPhase(null);
+    }
+  };
+
+  const renderBadge = (status) => {
+    if (status === 'completed' || status === 'verified') {
+      return (
+        <View style={[styles.mPhaseBadge, styles.mBadgeCompleted]}>
+          <Ionicons name="checkmark-circle" size={12} color="#166534" />
+          <Text style={styles.mBadgeCompletedText}>Done</Text>
+        </View>
+      );
+    }
+    if (status === 'in_progress' || status === 'proof_uploaded') {
+      return (
+        <View style={[styles.mPhaseBadge, styles.mBadgeProgress]}>
+          <Ionicons name="time" size={12} color="#1e40af" />
+          <Text style={styles.mBadgeProgressText}>In Progress</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={[styles.mPhaseBadge, styles.mBadgePending]}>
+        <Text style={styles.mBadgePendingText}>Pending</Text>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.trackerContainer}>
+      {/* Tracker Header */}
+      <View style={styles.trackerHeader}>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={styles.windowTag}>
+              <Text style={styles.windowTagText}>3-DAY MOUNTING WINDOW</Text>
+            </View>
+            <Text style={styles.pipelineSub}>Seller Controls</Text>
+          </View>
+          <Text style={styles.trackerTitle}>Mounting Pipeline & Verification</Text>
+        </View>
+
+        {isMountingWindow && timeLeftMounting ? (
+          <View style={styles.timerChipAmber}>
+            <Ionicons name="time-outline" size={13} color="#b45309" />
+            <Text style={styles.timerChipAmberText}>{timeLeftMounting} left</Text>
+          </View>
+        ) : null}
+
+        {isVerificationPending && timeLeftVerification ? (
+          <View style={styles.timerChipPurple}>
+            <Ionicons name="hourglass-outline" size={13} color="#7e22ce" />
+            <Text style={styles.timerChipPurpleText}>{timeLeftVerification}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* 3 Phases Stepper */}
+      <View style={styles.phasesRow}>
+        {/* Phase 1: Flex Pick up */}
+        <View style={[styles.phaseBox, m.flexPickupStatus === 'completed' && styles.phaseBoxCompleted]}>
+          <View style={styles.phaseBoxTop}>
+            <Ionicons
+              name="car-outline"
+              size={18}
+              color={m.flexPickupStatus === 'completed' ? '#166534' : '#2563eb'}
+            />
+            {renderBadge(m.flexPickupStatus)}
+          </View>
+          <Text style={styles.phaseNumber}>PHASE 1</Text>
+          <Text style={styles.phaseName}>Flex Pick up</Text>
+          <Text style={styles.phaseDesc}>Pick up flex from client</Text>
+          {m.flexPickupStatus !== 'completed' ? (
+            <TouchableOpacity
+              onPress={() => handleUpdatePhase('pickup', 'completed')}
+              disabled={updatingPhase === 'pickup'}
+              style={styles.phaseActionBtnSmall}
+            >
+              <Text style={styles.phaseActionBtnText}>
+                {updatingPhase === 'pickup' ? '...' : 'Mark Picked Up'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.phaseDoneLabel}>✓ Picked Up</Text>
+          )}
+        </View>
+
+        {/* Phase 2: Mounting */}
+        <View style={[styles.phaseBox, m.mountingStatus === 'completed' && styles.phaseBoxCompleted]}>
+          <View style={styles.phaseBoxTop}>
+            <Ionicons
+              name="construct-outline"
+              size={18}
+              color={m.mountingStatus === 'completed' ? '#166534' : '#2563eb'}
+            />
+            {renderBadge(m.mountingStatus)}
+          </View>
+          <Text style={styles.phaseNumber}>PHASE 2</Text>
+          <Text style={styles.phaseName}>Mounting</Text>
+          <Text style={styles.phaseDesc}>Install & tension flex</Text>
+          {m.mountingStatus !== 'completed' ? (
+            <TouchableOpacity
+              onPress={() => handleUpdatePhase('mounting', 'completed')}
+              disabled={updatingPhase === 'mounting'}
+              style={styles.phaseActionBtnSmall}
+            >
+              <Text style={styles.phaseActionBtnText}>
+                {updatingPhase === 'mounting' ? '...' : 'Mark Mounted'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.phaseDoneLabel}>✓ Mounted</Text>
+          )}
+        </View>
+
+        {/* Phase 3: Confirmation */}
+        <View style={[styles.phaseBox, m.confirmationStatus === 'verified' && styles.phaseBoxCompleted]}>
+          <View style={styles.phaseBoxTop}>
+            <Ionicons
+              name="camera-outline"
+              size={18}
+              color={m.confirmationStatus === 'verified' ? '#166534' : '#7e22ce'}
+            />
+            {renderBadge(m.confirmationStatus)}
+          </View>
+          <Text style={styles.phaseNumber}>PHASE 3</Text>
+          <Text style={styles.phaseName}>Confirmation</Text>
+          <Text style={styles.phaseDesc}>Proof with date & time</Text>
+          <TouchableOpacity
+            onPress={() => onOpenProofModal(booking)}
+            style={[styles.phaseActionBtnSmall, { backgroundColor: '#7e22ce' }]}
+          >
+            <Text style={styles.phaseActionBtnText}>
+              {m.proofPhotoUrl ? 'Update Proof' : 'Upload Proof'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Proof Photo Display Card */}
+      {m.proofPhotoUrl && (
+        <View style={styles.sellerProofCard}>
+          <Image source={{ uri: m.proofPhotoUrl }} style={styles.sellerProofImg} />
+          <View style={styles.sellerProofMeta}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="shield-checkmark" size={14} color="#166534" />
+              <Text style={styles.sellerProofMetaTitle}>Installation Proof Recorded</Text>
+            </View>
+            {m.proofPhotoCapturedAt && (
+              <Text style={styles.sellerProofDate}>
+                Timestamp: {new Date(m.proofPhotoCapturedAt).toLocaleString('en-IN')}
+              </Text>
+            )}
+            {m.mountingNotes ? (
+              <Text style={styles.sellerProofNotes} numberOfLines={2}>
+                Notes: "{m.mountingNotes}"
+              </Text>
+            ) : null}
+
+            <View style={{ marginTop: 4 }}>
+              {isVerificationPending ? (
+                <Text style={styles.sellerProofStatusPending}>
+                  ⏳ 4-Hour Customer Verification window active ({timeLeftVerification || 'counting down'})
+                </Text>
+              ) : m.customerVerified ? (
+                <Text style={styles.sellerProofStatusDone}>
+                  ✓ Verified by Customer ({m.customerVerifiedAt ? new Date(m.customerVerifiedAt).toLocaleDateString('en-IN') : ''})
+                </Text>
+              ) : m.adminVerified ? (
+                <Text style={styles.sellerProofStatusDone}>
+                  ✓ Auto-verified / Overridden by Admin
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Subscription Active Banner */}
+      {isActive && (
+        <View style={styles.activeCampaignBanner}>
+          <Ionicons name="flash" size={18} color="#16a34a" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.activeCampaignHeading}>CAMPAIGN SUBSCRIPTION ACTIVE</Text>
+            <Text style={styles.activeCampaignSub}>
+              Running from{' '}
+              {new Date(booking.subscriptionStartDate || booking.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{' '}
+              to{' '}
+              {new Date(booking.subscriptionEndDate || booking.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function SellerDashboardScreen({ navigation }) {
   const { user, isAuthenticated, isSeller, isApprovedSeller, isPendingSeller, updateProfile, refreshUser } = useAuth();
 
@@ -31,10 +284,24 @@ export default function SellerDashboardScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Tabs: 'inventory' | 'bookings' | 'payments'
+  const [sellerActiveTab, setSellerActiveTab] = useState('inventory');
+
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMapPickerModal, setShowMapPickerModal] = useState(false);
+  const [showProofModal, setShowProofModal] = useState(false);
+
+  // Proof Modal Form
+  const [selectedBookingForProof, setSelectedBookingForProof] = useState(null);
+  const [proofForm, setProofForm] = useState({
+    proofPhotoUrl: '',
+    capturedAt: '',
+    notes: ''
+  });
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [approvingBookingId, setApprovingBookingId] = useState(null);
 
   // Business Profile Form
   const [profileForm, setProfileForm] = useState({
@@ -176,6 +443,76 @@ export default function SellerDashboardScreen({ navigation }) {
         }
       ]
     );
+  };
+
+  const handleSellerApproval = (bookingId, decision) => {
+    Alert.alert(
+      decision === 'approve' ? 'Approve Booking Request?' : 'Decline Booking Request?',
+      decision === 'approve'
+        ? 'This will approve the reservation and unlock the payment option for the advertiser.'
+        : 'This will decline the reservation request.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: decision === 'approve' ? 'Approve' : 'Decline',
+          style: decision === 'approve' ? 'default' : 'destructive',
+          onPress: async () => {
+            setApprovingBookingId(bookingId);
+            try {
+              await mobileApi.put(`/bookings/${bookingId}/seller-approval`, { decision });
+              Alert.alert(
+                decision === 'approve' ? 'Booking Approved! 🎉' : 'Booking Declined',
+                decision === 'approve'
+                  ? 'Payment option is now unlocked for the advertiser. Once they complete payment, the 3-day mounting window will begin.'
+                  : 'The booking request has been declined.'
+              );
+              fetchSellerData();
+            } catch (err) {
+              Alert.alert('Error', err.response?.data?.message || 'Failed to update approval.');
+            } finally {
+              setApprovingBookingId(null);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const openProofModal = (booking) => {
+    setSelectedBookingForProof(booking);
+    setProofForm({
+      proofPhotoUrl: booking.mountingDetails?.proofPhotoUrl || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80',
+      capturedAt: booking.mountingDetails?.proofPhotoCapturedAt
+        ? new Date(booking.mountingDetails.proofPhotoCapturedAt).toLocaleString('en-IN')
+        : new Date().toLocaleString('en-IN'),
+      notes: booking.mountingDetails?.mountingNotes || ''
+    });
+    setShowProofModal(true);
+  };
+
+  const handleSubmitProof = async () => {
+    if (!proofForm.proofPhotoUrl.trim()) {
+      Alert.alert('Photo Required', 'Please enter or select a proof photo URL.');
+      return;
+    }
+    setUploadingProof(true);
+    try {
+      await mobileApi.put(`/bookings/${selectedBookingForProof._id}/mounting-proof`, {
+        proofPhotoUrl: proofForm.proofPhotoUrl.trim(),
+        capturedAt: new Date().toISOString(),
+        notes: proofForm.notes.trim()
+      });
+      Alert.alert(
+        'Proof Uploaded! 📸',
+        'Photo proof with timestamp has been recorded. The 4-hour customer verification window is now active!'
+      );
+      setShowProofModal(false);
+      fetchSellerData();
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to upload proof photo.');
+    } finally {
+      setUploadingProof(false);
+    }
   };
 
   const handlePointPicked = (lat, lng) => {
@@ -347,146 +684,375 @@ export default function SellerDashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Action Button: Enlist New Hoarding */}
-        <TouchableOpacity
-          onPress={() => {
-            if (isPendingSeller) {
-              Alert.alert(
-                'Approval Required',
-                'Super Admin verification required before enlisting new hoardings. Please complete your profile details.'
-              );
-              setShowProfileModal(true);
-              return;
-            }
-            setShowAddModal(true);
-          }}
-          style={[styles.addHoardingBtn, isPendingSeller && styles.addHoardingBtnLocked]}
-        >
-          <Ionicons
-            name={isPendingSeller ? 'lock-closed' : 'add-circle'}
-            size={20}
-            color="#fff"
-          />
-          <Text style={styles.addHoardingBtnText}>
-            {isPendingSeller ? 'Enlist Site (Locked: Pending Verification)' : 'Enlist New Hoarding Site'}
-          </Text>
-        </TouchableOpacity>
+        {/* Navigation Tabs Bar */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            onPress={() => setSellerActiveTab('inventory')}
+            style={[styles.tabBtn, sellerActiveTab === 'inventory' && styles.tabBtnActive]}
+          >
+            <Ionicons
+              name="grid-outline"
+              size={15}
+              color={sellerActiveTab === 'inventory' ? '#2563eb' : '#64748b'}
+            />
+            <Text style={[styles.tabBtnText, sellerActiveTab === 'inventory' && styles.tabBtnTextActive]}>
+              Hoardings ({hoardings.length})
+            </Text>
+          </TouchableOpacity>
 
-        {/* SECTION: INVENTORY CARDS */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionHeading}>My Listed Hoardings ({hoardings.length})</Text>
+          <TouchableOpacity
+            onPress={() => setSellerActiveTab('bookings')}
+            style={[styles.tabBtn, sellerActiveTab === 'bookings' && styles.tabBtnActive]}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={15}
+              color={sellerActiveTab === 'bookings' ? '#2563eb' : '#64748b'}
+            />
+            <Text style={[styles.tabBtnText, sellerActiveTab === 'bookings' && styles.tabBtnTextActive]}>
+              Bookings ({bookings.length})
+            </Text>
+            {(bookings || []).filter(b => b.bookingStatus === 'requested').length > 0 && (
+              <View style={styles.tabBadgeAmber}>
+                <Text style={styles.tabBadgeAmberText}>
+                  {(bookings || []).filter(b => b.bookingStatus === 'requested').length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setSellerActiveTab('payments')}
+            style={[styles.tabBtn, sellerActiveTab === 'payments' && styles.tabBtnActive]}
+          >
+            <Ionicons
+              name="cash-outline"
+              size={15}
+              color={sellerActiveTab === 'payments' ? '#2563eb' : '#64748b'}
+            />
+            <Text style={[styles.tabBtnText, sellerActiveTab === 'payments' && styles.tabBtnTextActive]}>
+              Cheques
+            </Text>
+            {payments.filter(p => p.paymentStatus === 'pending').length > 0 && (
+              <View style={styles.tabBadgeAmber}>
+                <Text style={styles.tabBadgeAmberText}>
+                  {payments.filter(p => p.paymentStatus === 'pending').length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {hoardings.length === 0 ? (
-          <View style={styles.emptyInventory}>
-            <Ionicons name="images-outline" size={40} color="#94a3b8" />
-            <Text style={styles.emptyTitle}>No Hoardings Listed Yet</Text>
-            <Text style={styles.emptySub}>
-              Tap "Enlist New Hoarding Site" above to add your first billboard.
-            </Text>
-          </View>
-        ) : (
-          hoardings.map(h => {
-            const isAvail = h.availabilityStatus === 'available';
-            const hasMaps = h.location?.googleMapsUrl || h.location?.geo?.coordinates?.length === 2;
+        {/* ============================================================== */}
+        {/* TAB 1: INVENTORY CARDS */}
+        {/* ============================================================== */}
+        {sellerActiveTab === 'inventory' && (
+          <View>
+            {/* Action Button: Enlist New Hoarding */}
+            <TouchableOpacity
+              onPress={() => {
+                if (isPendingSeller) {
+                  Alert.alert(
+                    'Approval Required',
+                    'Super Admin verification required before enlisting new hoardings. Please complete your profile details.'
+                  );
+                  setShowProfileModal(true);
+                  return;
+                }
+                setShowAddModal(true);
+              }}
+              style={[styles.addHoardingBtn, isPendingSeller && styles.addHoardingBtnLocked]}
+            >
+              <Ionicons
+                name={isPendingSeller ? 'lock-closed' : 'add-circle'}
+                size={20}
+                color="#fff"
+              />
+              <Text style={styles.addHoardingBtnText}>
+                {isPendingSeller ? 'Enlist Site (Locked: Pending Verification)' : 'Enlist New Hoarding Site'}
+              </Text>
+            </TouchableOpacity>
 
-            return (
-              <View key={h._id} style={styles.inventoryCard}>
-                <Image
-                  source={{
-                    uri: h.photos?.[0] || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=600&q=80'
-                  }}
-                  style={styles.inventoryCardImg}
-                />
-                <View style={styles.inventoryCardBody}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={styles.inventoryCity}>{h.location?.city || 'Kolkata'}</Text>
-                    <View style={[styles.statusPill, isAvail ? styles.pillAvail : styles.pillBooked]}>
-                      <Text style={[styles.statusPillText, isAvail ? styles.pillAvailText : styles.pillBookedText]}>
-                        {isAvail ? 'AVAILABLE' : 'BOOKED'}
-                      </Text>
-                    </View>
-                  </View>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeading}>My Listed Hoardings ({hoardings.length})</Text>
+            </View>
 
-                  <Text style={styles.inventoryTitle} numberOfLines={1}>{h.title}</Text>
-                  <Text style={styles.inventoryAddress} numberOfLines={1}>{h.location?.address}</Text>
-
-                  <View style={styles.inventoryPriceRow}>
-                    <Text style={styles.inventoryPrice}>
-                      ₹{(h.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo
-                    </Text>
-
-                    <View style={{ flexDirection: 'row', gap: 6 }}>
-                      {hasMaps && (
-                        <TouchableOpacity
-                          onPress={() => {
-                            const url = h.location?.googleMapsUrl ||
-                              `https://www.google.com/maps?q=${h.location?.geo?.coordinates[1]},${h.location?.geo?.coordinates[0]}`;
-                            Linking.openURL(url);
-                          }}
-                          style={styles.cardMapsIconBtn}
-                        >
-                          <Ionicons name="navigate" size={14} color="#2563eb" />
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#2563eb' }}>Map</Text>
-                        </TouchableOpacity>
-                      )}
-
-                      <TouchableOpacity
-                        onPress={() => handleStatusToggle(h._id, h.availabilityStatus)}
-                        style={styles.toggleStatusBtn}
-                      >
-                        <Text style={styles.toggleStatusBtnText}>
-                          {isAvail ? 'Mark Booked' : 'Mark Available'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
+            {hoardings.length === 0 ? (
+              <View style={styles.emptyInventory}>
+                <Ionicons name="images-outline" size={40} color="#94a3b8" />
+                <Text style={styles.emptyTitle}>No Hoardings Listed Yet</Text>
+                <Text style={styles.emptySub}>
+                  Tap "Enlist New Hoarding Site" above to add your first billboard.
+                </Text>
               </View>
-            );
-          })
+            ) : (
+              hoardings.map(h => {
+                const isAvail = h.availabilityStatus === 'available';
+                const hasMaps = h.location?.googleMapsUrl || h.location?.geo?.coordinates?.length === 2;
+
+                return (
+                  <View key={h._id} style={styles.inventoryCard}>
+                    <Image
+                      source={{
+                        uri: h.photos?.[0] || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=600&q=80'
+                      }}
+                      style={styles.inventoryCardImg}
+                    />
+                    <View style={styles.inventoryCardBody}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={styles.inventoryCity}>{h.location?.city || 'Kolkata'}</Text>
+                        <View style={[styles.statusPill, isAvail ? styles.pillAvail : styles.pillBooked]}>
+                          <Text style={[styles.statusPillText, isAvail ? styles.pillAvailText : styles.pillBookedText]}>
+                            {isAvail ? 'AVAILABLE' : 'BOOKED'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.inventoryTitle} numberOfLines={1}>{h.title}</Text>
+                      <Text style={styles.inventoryAddress} numberOfLines={1}>{h.location?.address}</Text>
+
+                      <View style={styles.inventoryPriceRow}>
+                        <Text style={styles.inventoryPrice}>
+                          ₹{(h.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          {hasMaps && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                const url = h.location?.googleMapsUrl ||
+                                  `https://www.google.com/maps?q=${h.location?.geo?.coordinates[1]},${h.location?.geo?.coordinates[0]}`;
+                                Linking.openURL(url);
+                              }}
+                              style={styles.cardMapsIconBtn}
+                            >
+                              <Ionicons name="navigate" size={14} color="#2563eb" />
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#2563eb' }}>Map</Text>
+                            </TouchableOpacity>
+                          )}
+
+                          <TouchableOpacity
+                            onPress={() => handleStatusToggle(h._id, h.availabilityStatus)}
+                            style={styles.toggleStatusBtn}
+                          >
+                            <Text style={styles.toggleStatusBtnText}>
+                              {isAvail ? 'Mark Booked' : 'Mark Available'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
         )}
 
-        {/* SECTION: OFFLINE CHEQUE / NEFT VERIFICATION */}
-        <View style={[styles.sectionHeaderRow, { marginTop: 20 }]}>
-          <Text style={styles.sectionHeading}>
-            Offline Cheque / NEFT Verification Desk ({payments.filter(p => p.paymentStatus === 'pending').length})
-          </Text>
-        </View>
-
-        {payments.filter(p => p.paymentStatus === 'pending').length === 0 ? (
-          <View style={styles.emptyCheques}>
-            <Ionicons name="checkmark-done-circle-outline" size={36} color="#16a34a" />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginTop: 4 }}>
-              All client payments verified!
-            </Text>
-          </View>
-        ) : (
-          payments
-            .filter(p => p.paymentStatus === 'pending')
-            .map(p => (
-              <View key={p._id} style={styles.chequeCard}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.chequeBookingId}>
-                    Booking #{p.booking?.slice(-6) || p._id.slice(-6)}
-                  </Text>
-                  <Text style={styles.chequeAmount}>
-                    ₹{(p.amount || 0).toLocaleString('en-IN')}
-                  </Text>
-                  <Text style={styles.chequeRef}>
-                    Mode: {p.paymentMethod?.toUpperCase()} • Ref: {p.transactionReference || 'Cheque'}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => handleVerifyCheque(p._id)}
-                  style={styles.verifyChequeBtn}
-                >
-                  <Ionicons name="checkmark" size={16} color="#fff" />
-                  <Text style={styles.verifyChequeBtnText}>Verify</Text>
-                </TouchableOpacity>
+        {/* ============================================================== */}
+        {/* TAB 2: BOOKINGS & 3-DAY MOUNTING PIPELINE */}
+        {/* ============================================================== */}
+        {sellerActiveTab === 'bookings' && (
+          <View>
+            <View style={styles.sectionHeaderRow}>
+              <View>
+                <Text style={styles.sectionHeading}>
+                  Bookings & Mounting Pipeline ({bookings.length})
+                </Text>
+                <Text style={styles.sectionSubheading}>
+                  Approve client bookings to unlock payment, and manage the 3-day mounting window.
+                </Text>
               </View>
-            ))
+            </View>
+
+            {bookings.length === 0 ? (
+              <View style={styles.emptyInventory}>
+                <Ionicons name="calendar-outline" size={40} color="#94a3b8" />
+                <Text style={styles.emptyTitle}>No Booking Requests Yet</Text>
+                <Text style={styles.emptySub}>
+                  When customers reserve your hoarding sites, booking requests and mounting tasks will appear here.
+                </Text>
+              </View>
+            ) : (
+              bookings.map(b => {
+                const isRequested = b.bookingStatus === 'requested';
+                const isApproved = b.bookingStatus === 'approved';
+                const isMountingWindow = b.bookingStatus === 'mounting_window';
+                const isVerificationPending = b.bookingStatus === 'verification_pending';
+                const isActive = b.bookingStatus === 'active';
+
+                return (
+                  <View key={b._id} style={styles.sellerBookingCard}>
+                    {/* Top Header */}
+                    <View style={styles.sellerBookingHeader}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.sellerBookingNum}>#{b.bookingNumber || b._id.slice(-6)}</Text>
+                          <Text style={styles.sellerBookingDot}>•</Text>
+                          <Text style={styles.sellerBookingCampaign} numberOfLines={1}>
+                            {b.campaignName || 'Brand Campaign'}
+                          </Text>
+                        </View>
+                        <Text style={styles.sellerBookingSiteTitle} numberOfLines={1}>
+                          {b.hoardingId?.title || 'Hoarding Space'}
+                        </Text>
+                        <Text style={styles.sellerBookingDates}>
+                          {b.hoardingId?.location?.city || 'Kolkata'} • {b.durationDays} Days •{' '}
+                          {new Date(b.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} —{' '}
+                          {new Date(b.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </Text>
+                      </View>
+
+                      {/* Status Tag */}
+                      <View style={[
+                        styles.sellerStatusTag,
+                        isRequested && styles.statusTagAmber,
+                        isApproved && styles.statusTagBlue,
+                        (isMountingWindow || isVerificationPending) && styles.statusTagPurple,
+                        isActive && styles.statusTagGreen
+                      ]}>
+                        <Text style={[
+                          styles.sellerStatusTagText,
+                          isRequested && styles.statusTagAmberText,
+                          isApproved && styles.statusTagBlueText,
+                          (isMountingWindow || isVerificationPending) && styles.statusTagPurpleText,
+                          isActive && styles.statusTagGreenText
+                        ]}>
+                          {isRequested ? 'PENDING APPROVAL' :
+                           isApproved ? 'AWAITING PAYMENT' :
+                           isMountingWindow ? 'MOUNTING WINDOW' :
+                           isVerificationPending ? 'VERIFICATION PENDING' :
+                           isActive ? 'ACTIVE' : (b.bookingStatus || '').toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Customer & Financial Summary */}
+                    <View style={styles.sellerBookingMetaRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.metaLabel}>ADVERTISER</Text>
+                        <Text style={styles.metaVal}>{b.customerId?.name || 'Customer'}</Text>
+                        <Text style={styles.metaSub}>{b.customerId?.phone || b.customerId?.email}</Text>
+                        {b.customerId?.companyDetails?.companyName ? (
+                          <Text style={styles.metaCompany}>{b.customerId.companyDetails.companyName}</Text>
+                        ) : null}
+                      </View>
+
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={styles.metaLabel}>GROSS RENT</Text>
+                        <Text style={styles.metaAmount}>₹{(b.totalAmount || 0).toLocaleString('en-IN')}</Text>
+                        <Text style={[styles.metaPaymentStatus, b.paymentStatus === 'paid' ? { color: '#16a34a' } : { color: '#d97706' }]}>
+                          Payment: {b.paymentStatus || 'unpaid'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* ACTION BAR: PENDING APPROVAL REQUEST */}
+                    {isRequested && (
+                      <View style={styles.approvalActionBox}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                          <Ionicons name="time" size={16} color="#b45309" />
+                          <Text style={styles.approvalNoticeTitle}>Advertiser Reservation Request</Text>
+                        </View>
+                        <Text style={styles.approvalNoticeText}>
+                          Advertiser has reserved this site. Review the campaign dates and approve to unlock the payment option for them.
+                        </Text>
+
+                        <View style={styles.approvalBtnRow}>
+                          <TouchableOpacity
+                            onPress={() => handleSellerApproval(b._id, 'reject')}
+                            disabled={approvingBookingId === b._id}
+                            style={styles.declineBtn}
+                          >
+                            <Text style={styles.declineBtnText}>Decline</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => handleSellerApproval(b._id, 'approve')}
+                            disabled={approvingBookingId === b._id}
+                            style={styles.approveBtn}
+                          >
+                            <Ionicons name="checkmark-circle" size={15} color="#fff" />
+                            <Text style={styles.approveBtnText}>
+                              {approvingBookingId === b._id ? 'Approving...' : 'Approve Booking'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* APPROVED STATE: WAITING FOR CUSTOMER PAYMENT */}
+                    {isApproved && (
+                      <View style={styles.awaitingPaymentBox}>
+                        <Ionicons name="information-circle" size={16} color="#1d4ed8" />
+                        <Text style={styles.awaitingPaymentText}>
+                          <Text style={{ fontWeight: '900' }}>Approved by You! </Text>
+                          Waiting for customer to complete payment. Once paid, confirmation is sent and the 3-day mounting window automatically starts.
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* MOUNTING TRACKER PIPELINE */}
+                    {(isMountingWindow || isVerificationPending || isActive) && (
+                      <SellerMountingTracker
+                        booking={b}
+                        onRefresh={fetchSellerData}
+                        onOpenProofModal={openProofModal}
+                      />
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 3: OFFLINE CHEQUE / NEFT VERIFICATION DESK */}
+        {/* ============================================================== */}
+        {sellerActiveTab === 'payments' && (
+          <View>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeading}>
+                Offline Cheque / NEFT Verification Desk ({payments.filter(p => p.paymentStatus === 'pending').length})
+              </Text>
+            </View>
+
+            {payments.filter(p => p.paymentStatus === 'pending').length === 0 ? (
+              <View style={styles.emptyCheques}>
+                <Ionicons name="checkmark-done-circle-outline" size={36} color="#16a34a" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginTop: 4 }}>
+                  All client payments verified!
+                </Text>
+              </View>
+            ) : (
+              payments
+                .filter(p => p.paymentStatus === 'pending')
+                .map(p => (
+                  <View key={p._id} style={styles.chequeCard}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.chequeBookingId}>
+                        Booking #{p.booking?.slice(-6) || p._id.slice(-6)}
+                      </Text>
+                      <Text style={styles.chequeAmount}>
+                        ₹{(p.amount || 0).toLocaleString('en-IN')}
+                      </Text>
+                      <Text style={styles.chequeRef}>
+                        Mode: {p.paymentMethod?.toUpperCase()} • Ref: {p.transactionReference || 'Cheque'}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => handleVerifyCheque(p._id)}
+                      style={styles.verifyChequeBtn}
+                    >
+                      <Ionicons name="checkmark" size={16} color="#fff" />
+                      <Text style={styles.verifyChequeBtnText}>Verify</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+            )}
+          </View>
         )}
       </ScrollView>
 
@@ -678,6 +1244,94 @@ export default function SellerDashboardScreen({ navigation }) {
               style={styles.submitModalBtn}
             >
               <Text style={styles.submitModalBtnText}>Submit for Admin Approval</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ============================================================== */}
+      {/* MOUNTING PROOF PHOTO UPLOAD MODAL */}
+      {/* ============================================================== */}
+      <Modal visible={showProofModal} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalHeading}>Upload Mounting Proof</Text>
+              <Text style={styles.modalSubheading}>Phase 3 • Date & Time Stamped Confirmation</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowProofModal(false)}>
+              <Ionicons name="close" size={24} color="#0f172a" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ padding: 16 }}>
+            <View style={styles.proofNoticeBox}>
+              <Ionicons name="information-circle" size={18} color="#7e22ce" />
+              <Text style={styles.proofNoticeText}>
+                Upload a real photo of the mounted hoarding. Upon submitting, a timestamp will be recorded and the 4-hour customer verification window will automatically start.
+              </Text>
+            </View>
+
+            <Text style={styles.inputLabel}>Proof Image URL *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="https://... (or select sample below)"
+              value={proofForm.proofPhotoUrl}
+              onChangeText={t => setProofForm(p => ({ ...p, proofPhotoUrl: t }))}
+            />
+
+            {/* Quick Sample Presets */}
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+              <TouchableOpacity
+                onPress={() => setProofForm(p => ({
+                  ...p,
+                  proofPhotoUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80'
+                }))}
+                style={styles.samplePresetBtn}
+              >
+                <Text style={styles.samplePresetBtnText}>Sample Billboard 1</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setProofForm(p => ({
+                  ...p,
+                  proofPhotoUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=1200&q=80'
+                }))}
+                style={styles.samplePresetBtn}
+              >
+                <Text style={styles.samplePresetBtnText}>Sample Billboard 2</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Preview */}
+            {proofForm.proofPhotoUrl ? (
+              <View style={styles.proofModalPreviewWrap}>
+                <Image source={{ uri: proofForm.proofPhotoUrl }} style={styles.proofModalPreviewImg} />
+                <View style={styles.proofModalTimestampOverlay}>
+                  <Ionicons name="time" size={12} color="#fff" />
+                  <Text style={styles.proofModalTimestampText}>
+                    Date & Time Stamp: {proofForm.capturedAt || new Date().toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            <Text style={[styles.inputLabel, { marginTop: 14 }]}>Mounting & Inspection Notes</Text>
+            <TextInput
+              style={[styles.input, { height: 70, textAlignVertical: 'top' }]}
+              placeholder="e.g., High-tension vinyl flex mounted with reinforced eyelets, floodlights aligned and tested."
+              multiline
+              value={proofForm.notes}
+              onChangeText={t => setProofForm(p => ({ ...p, notes: t }))}
+            />
+
+            <TouchableOpacity
+              onPress={handleSubmitProof}
+              disabled={uploadingProof}
+              style={[styles.submitModalBtn, { backgroundColor: '#7e22ce' }]}
+            >
+              <Text style={styles.submitModalBtnText}>
+                {uploadingProof ? 'Uploading Proof...' : 'Submit Proof & Start 4-Hour Verification'}
+              </Text>
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
@@ -1123,5 +1777,528 @@ const styles = StyleSheet.create({
   mapPickerSubtitle: {
     color: '#94a3b8',
     fontSize: 11,
+  },
+
+  // Tab Bar
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 4,
+  },
+  tabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    gap: 5,
+  },
+  tabBtnActive: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  tabBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  tabBtnTextActive: {
+    color: '#1d4ed8',
+    fontWeight: '900',
+  },
+  tabBadgeAmber: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  tabBadgeAmberText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#92400e',
+  },
+
+  // Section Subheading
+  sectionSubheading: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+
+  // Seller Bookings
+  sellerBookingCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  sellerBookingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  sellerBookingNum: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#4338ca',
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  sellerBookingDot: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  sellerBookingCampaign: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    flex: 1,
+  },
+  sellerBookingSiteTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginTop: 4,
+  },
+  sellerBookingDates: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  sellerStatusTag: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+  },
+  sellerStatusTagText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#475569',
+  },
+  statusTagAmber: { backgroundColor: '#fef3c7' },
+  statusTagAmberText: { color: '#92400e' },
+  statusTagBlue: { backgroundColor: '#dbeafe' },
+  statusTagBlueText: { color: '#1e40af' },
+  statusTagPurple: { backgroundColor: '#f3e8ff' },
+  statusTagPurpleText: { color: '#6b21a8' },
+  statusTagGreen: { backgroundColor: '#dcfce7' },
+  statusTagGreenText: { color: '#166534' },
+
+  sellerBookingMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f8fafc',
+  },
+  metaLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+  },
+  metaVal: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginTop: 1,
+  },
+  metaSub: {
+    fontSize: 10,
+    color: '#64748b',
+  },
+  metaCompany: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4f46e5',
+  },
+  metaAmount: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginTop: 1,
+  },
+  metaPaymentStatus: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    marginTop: 1,
+  },
+
+  // Pending Approval Action Bar
+  approvalActionBox: {
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+  },
+  approvalNoticeTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#78350f',
+    textTransform: 'uppercase',
+  },
+  approvalNoticeText: {
+    fontSize: 11,
+    color: '#92400e',
+    lineHeight: 15,
+  },
+  approvalBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 10,
+  },
+  declineBtn: {
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+  },
+  declineBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#b91c1c',
+  },
+  approveBtn: {
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  approveBtnText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#fff',
+  },
+
+  // Awaiting Payment Box
+  awaitingPaymentBox: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  awaitingPaymentText: {
+    fontSize: 11,
+    color: '#1e40af',
+    flex: 1,
+    lineHeight: 15,
+  },
+
+  // Mounting Tracker
+  trackerContainer: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginTop: 10,
+  },
+  trackerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+    gap: 6,
+  },
+  windowTag: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  windowTagText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#92400e',
+  },
+  pipelineSub: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '700',
+  },
+  trackerTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginTop: 2,
+  },
+  timerChipAmber: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  timerChipAmberText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#92400e',
+  },
+  timerChipPurple: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f3e8ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e9d5ff',
+  },
+  timerChipPurpleText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#6b21a8',
+    fontFamily: 'monospace',
+  },
+
+  phasesRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  phaseBox: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 7,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  phaseBoxCompleted: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
+  },
+  phaseBoxTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  mPhaseBadge: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  mBadgeCompleted: { backgroundColor: '#dcfce7' },
+  mBadgeCompletedText: { fontSize: 8, fontWeight: '900', color: '#166534' },
+  mBadgeProgress: { backgroundColor: '#dbeafe' },
+  mBadgeProgressText: { fontSize: 8, fontWeight: '900', color: '#1e40af' },
+  mBadgePending: { backgroundColor: '#f1f5f9' },
+  mBadgePendingText: { fontSize: 8, fontWeight: '700', color: '#64748b' },
+  phaseNumber: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#94a3b8',
+    marginTop: 4,
+  },
+  phaseName: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginTop: 1,
+  },
+  phaseDesc: {
+    fontSize: 8,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  phaseActionBtnSmall: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 5,
+    paddingHorizontal: 4,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  phaseActionBtnText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#fff',
+  },
+  phaseDoneLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#166534',
+    marginTop: 6,
+  },
+
+  // Seller Proof Card
+  sellerProofCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 8,
+    marginTop: 10,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  sellerProofImg: {
+    width: 76,
+    height: 56,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+  },
+  sellerProofMeta: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  sellerProofMetaTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#166534',
+  },
+  sellerProofDate: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#334155',
+    marginTop: 1,
+  },
+  sellerProofNotes: {
+    fontSize: 9,
+    color: '#64748b',
+    fontStyle: 'italic',
+    marginTop: 1,
+  },
+  sellerProofStatusPending: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#7e22ce',
+  },
+  sellerProofStatusDone: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#166534',
+  },
+
+  // Active Campaign Banner
+  activeCampaignBanner: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#86efac',
+    borderRadius: 10,
+    padding: 8,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  activeCampaignHeading: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#166534',
+  },
+  activeCampaignSub: {
+    fontSize: 10,
+    color: '#15803d',
+    marginTop: 1,
+  },
+
+  // Proof Modal
+  modalSubheading: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '700',
+  },
+  proofNoticeBox: {
+    backgroundColor: '#faf5ff',
+    borderWidth: 1,
+    borderColor: '#e9d5ff',
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 10,
+  },
+  proofNoticeText: {
+    fontSize: 11,
+    color: '#581c87',
+    flex: 1,
+    lineHeight: 15,
+  },
+  samplePresetBtn: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  samplePresetBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  proofModalPreviewWrap: {
+    marginTop: 10,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    position: 'relative',
+  },
+  proofModalPreviewImg: {
+    width: '100%',
+    height: 140,
+  },
+  proofModalTimestampOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  proofModalTimestampText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: 'monospace',
   },
 });
