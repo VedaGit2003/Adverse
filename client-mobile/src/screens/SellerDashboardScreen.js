@@ -370,7 +370,7 @@ export default function SellerDashboardScreen({ navigation }) {
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && user?.role !== 'customer') {
       fetchSellerData();
       if (user) {
         setProfileForm({
@@ -401,6 +401,38 @@ export default function SellerDashboardScreen({ navigation }) {
         >
           <Text style={styles.signInBtnText}>Sign In / Register</Text>
         </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  // Client (Advertiser) Role Guard: Clients are NOT allowed to enlist hoardings or access Seller Desk
+  if (user?.role === 'customer') {
+    return (
+      <SafeAreaView style={styles.authPromptContainer}>
+        <View style={styles.clientRestrictedIconBox}>
+          <Ionicons name="shield-outline" size={44} color="#d97706" />
+        </View>
+        <Text style={styles.authPromptTitle}>Advertiser / Client Account</Text>
+        <Text style={styles.authPromptSubtitle}>
+          Clients are not allowed to enlist new hoarding sites. Hoarding site enlistment is exclusively reserved for accredited Media Owners (Sellers).
+        </Text>
+        <View style={{ width: '100%', marginTop: 24, gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Explore')}
+            style={[styles.clientActionBtn, styles.clientActionBtnPrimary]}
+          >
+            <Ionicons name="map-outline" size={18} color="#fff" />
+            <Text style={styles.clientActionBtnTextPrimary}>Explore Available Hoardings</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('BookingsTab')}
+            style={[styles.clientActionBtn, styles.clientActionBtnSecondary]}
+          >
+            <Ionicons name="receipt-outline" size={18} color="#334155" />
+            <Text style={styles.clientActionBtnTextSecondary}>View My Bookings</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
@@ -549,6 +581,11 @@ export default function SellerDashboardScreen({ navigation }) {
   };
 
   const handleAddHoardingSubmit = async () => {
+    if (user?.role === 'customer') {
+      Alert.alert('Action Not Allowed', 'Clients (Advertisers) are not permitted to enlist new hoarding sites.');
+      return;
+    }
+
     if (!newHoarding.title || !newHoarding.address || !newHoarding.baseRatePerMonth) {
       Alert.alert('Missing Fields', 'Please provide Title, Address, and Monthly Rent.');
       return;
@@ -1410,6 +1447,43 @@ const styles = StyleSheet.create({
   },
   signInBtnText: {
     color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  clientRestrictedIconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  clientActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    width: '100%',
+  },
+  clientActionBtnPrimary: {
+    backgroundColor: '#2563eb',
+  },
+  clientActionBtnSecondary: {
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  clientActionBtnTextPrimary: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  clientActionBtnTextSecondary: {
+    color: '#334155',
     fontSize: 14,
     fontWeight: '800',
   },

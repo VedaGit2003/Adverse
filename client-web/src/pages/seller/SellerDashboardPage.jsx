@@ -125,8 +125,12 @@ export default function SellerDashboardPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (user?.role !== 'customer') {
+      fetchData();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   // Quick Status Toggle: available / occupied / under_maintenance / inactive
   const handleQuickStatusChange = async (hoardingId, newStatus) => {
@@ -382,6 +386,10 @@ export default function SellerDashboardPage() {
 
   const handleAddHoardingSubmit = async (e) => {
     e.preventDefault();
+    if (user?.role === 'customer') {
+      setFormError('Clients (Advertisers) are not allowed to enlist hoarding sites.');
+      return;
+    }
     setFormError('');
     setFormLoading(true);
 
@@ -555,6 +563,39 @@ export default function SellerDashboardPage() {
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-slate-600 font-semibold">Loading Media Owner Portal...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Client (Advertiser) Role Guard: Clients are NOT allowed to enlist hoardings or access Seller Portal
+  if (user?.role === 'customer') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full border border-slate-200 text-center shadow-lg">
+          <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-4">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-black text-slate-900">Advertiser / Client Account</h2>
+          <p className="text-sm text-slate-600 mt-2">
+            Clients are not allowed to enlist new hoarding sites. Hoarding site enlistment is exclusively reserved for accredited Media Owners (Sellers).
+          </p>
+          <div className="mt-6 flex flex-col gap-3">
+            <Link
+              to="/search"
+              className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2"
+            >
+              <MapPin className="w-4 h-4" />
+              <span>Explore Available Hoardings</span>
+            </Link>
+            <Link
+              to="/my-bookings"
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2"
+            >
+              <CalendarCheck className="w-4 h-4" />
+              <span>View My Bookings</span>
+            </Link>
+          </div>
         </div>
       </div>
     );

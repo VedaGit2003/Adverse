@@ -37,6 +37,9 @@ This document is designed to teach you the system architecture, file structure, 
    - [Hoarding Availability State Machine](#hoarding-availability-state-machine)
    - [Automatic Release on Campaign Expiration & Completion](#automatic-release-on-campaign-expiration--completion)
    - [Cross-Platform Status Normalization](#cross-platform-status-normalization)
+10. [Client Role Boundaries & Hoarding Enlistment Protection](#10-client-role-boundaries--hoarding-enlistment-protection)
+   - [Role Privilege Matrix](#role-privilege-matrix)
+   - [Multi-Tier Guard Architecture](#multi-tier-guard-architecture)
 
 ---
 
@@ -536,6 +539,42 @@ To avoid inconsistent UI badges (e.g. Completed bookings falling through to "Pen
    - **Customer Web & Mobile:** Explicitly maps `completed` to **"Completed (Campaign Expired)"** with a dedicated gray badge, releasing visual clutter and displaying a completion explanation banner.
    - **Seller Web & Mobile:** Features dedicated **"Completed (Expired)"** tags, statistics counters, and explains that the site is free for new bookings.
    - **Super Admin Governance:** Displays **"Completed (Expired)"** in the governance table alongside an **"Active Only" / "Completed" / "All Bookings"** filter toggle.
+
+---
+
+## 10. Client Role Boundaries & Hoarding Enlistment Protection
+
+To maintain platform trust and legal compliance, **Clients (Advertisers)** are strictly prevented from enlisting new hoarding boards. Only verified **Media Owners (Sellers)** and **Super Admins** have listing privileges.
+
+### Role Privilege Matrix
+
+| Action / Capability | `customer` (Client) | `seller` (Media Owner) | `admin` (Super Admin) |
+|---|:---:|:---:|:---:|
+| Search & Filter Billboard Inventory | ✅ | ✅ | ✅ |
+| Reserve / Book Hoarding Space | ✅ | ❌ | ✅ |
+| **Enlist New Hoarding Board** | ❌ **FORBIDDEN** | ✅ *(If Accredited)* | ✅ |
+| Upload Mounting Photos & Proof | ❌ | ✅ | ✅ |
+| Approve / Reject Bookings | ❌ | ✅ | ✅ |
+| Verify Customer Proof Photo | ✅ *(4h window)* | ❌ | ✅ |
+| Verify Offline Cheque / NEFT | ❌ | ✅ | ✅ |
+
+### Multi-Tier Guard Architecture
+
+1. **Mobile Bottom Navigation (`client-mobile/App.js`):**
+   - The `"Seller Desk"` tab is dynamically hidden for authenticated `customer` users. Clients only see `Discover`, `My Bookings`, and `Account`.
+2. **Mobile Screen-Level Guard (`client-mobile/src/screens/SellerDashboardScreen.js`):**
+   - If a client navigates to the screen directly, it renders a dedicated restricted state (`Advertiser / Client Account`) explaining that clients are not allowed to enlist hoardings, accompanied by one-tap navigation to "Explore Available Hoardings" and "View My Bookings".
+   - Client submission in `handleAddHoardingSubmit` is stopped with an alert before making network requests.
+3. **Web Protected Routes & Page Guard (`client-web/src/pages/seller/SellerDashboardPage.jsx`):**
+   - Blocked by `ProtectedRoute allowedRoles={['seller', 'admin']}` in `App.jsx`.
+   - In-page check renders the restricted notification card if role is `customer`.
+   - `handleAddHoardingSubmit` checks `user?.role === 'customer'` and aborts.
+4. **Backend Authorization Middleware (`server/src/middlewares/auth.middleware.js`):**
+   - `authorizeRoles('seller', 'admin')` protects `POST /api/hoardings`, returning an explicit 403 error:
+     `Clients (Advertisers) are not allowed to enlist or manage hoarding sites. Only accredited Media Owners (Sellers) have enlistment privileges.`
+5. **Controller-Level Security (`server/src/modules/hoardings/hoarding.controller.js`):**
+   - `createHoarding` explicitly verifies `req.user?.role !== 'customer'` before processing any coordinates or MongoDB mutations.
+
 
 
 

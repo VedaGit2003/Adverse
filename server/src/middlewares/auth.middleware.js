@@ -56,9 +56,13 @@ const verifyToken = async (req, res, next) => {
 const authorizeRoles = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
+      const isClient = req.user && req.user.role === 'customer';
+      const msg = isClient
+        ? 'Clients (Advertisers) are not allowed to enlist or manage hoarding sites. Only accredited Media Owners (Sellers) have enlistment privileges.'
+        : `Forbidden: role '${req.user ? req.user.role : 'anonymous'}' is not authorized to access this resource.`;
       return res.status(403).json({
         success: false,
-        message: `Forbidden: role '${req.user ? req.user.role : 'anonymous'}' is not authorized to access this resource.`
+        message: msg
       });
     }
     next();

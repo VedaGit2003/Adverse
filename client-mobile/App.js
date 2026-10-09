@@ -23,8 +23,9 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function MainTabs() {
-  const { isSeller } = useAuth();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const isClient = user?.role === 'customer';
 
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 16 : 0);
   const tabHeight = 60 + bottomInset;
@@ -71,11 +72,13 @@ function MainTabs() {
         component={MyBookingsScreen}
         options={{ tabBarLabel: 'My Bookings' }}
       />
-      <Tab.Screen
-        name="SellerTab"
-        component={SellerDashboardScreen}
-        options={{ tabBarLabel: 'Seller Desk' }}
-      />
+      {!isClient && (
+        <Tab.Screen
+          name="SellerTab"
+          component={SellerDashboardScreen}
+          options={{ tabBarLabel: 'Seller Desk' }}
+        />
+      )}
       <Tab.Screen
         name="Account"
         component={LoginScreen}

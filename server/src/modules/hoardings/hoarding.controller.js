@@ -160,6 +160,13 @@ exports.getHoardingById = async (req, res, next) => {
 
 exports.createHoarding = async (req, res, next) => {
   try {
+    if (req.user?.role === 'customer') {
+      return res.status(403).json({
+        success: false,
+        message: 'Clients (Advertisers) are not allowed to enlist new hoarding sites. Only accredited Media Owners (Sellers) have enlistment privileges.'
+      });
+    }
+
     const { title, description, hoardingType, lightingType, dimensions, location, pricing, photos } = req.body;
 
     if (!dimensions || !dimensions.width || !dimensions.height) {
