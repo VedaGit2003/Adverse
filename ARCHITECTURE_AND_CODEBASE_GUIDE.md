@@ -27,6 +27,12 @@ This document is designed to teach you the system architecture, file structure, 
    - [Mobile SSO & Bottom Sheet](#mobile-sso--bottom-sheet)
 6. [Cross-Platform Synchronization Flow](#6-cross-platform-synchronization-flow)
 7. [Running & Testing the Entire Stack](#7-running--testing-the-entire-stack)
+8. [Mounting, Installation & Verification Pipeline](#8-mounting-installation--verification-pipeline)
+   - [The Complete 5-Step Order Lifecycle](#the-complete-5-step-order-lifecycle)
+   - [The 3-Phase Mounting Workflow](#the-3-phase-mounting-workflow)
+   - [Collapsible Dropdown UI Architecture (Web & Mobile)](#collapsible-dropdown-ui-architecture-web--mobile)
+   - [Super Admin Window Governance & Overrides](#super-admin-window-governance--overrides)
+   - [Configuring Default Window Durations in Code](#configuring-default-window-durations-in-code)
 
 ---
 
@@ -329,4 +335,150 @@ npx expo start --lan
 | **🛍️ Client (Advertiser)** | `client@brands.com` | `Client@123` | Discover sites, book hoardings, upload campaign artwork |
 
 *(Both Web and Mobile feature 1-tap demo buttons on their login screens for instant sign-in!)*
+
+---
+
+## 8. Mounting, Installation & Verification Pipeline
+
+The platform enforces a strict, transparent operational pipeline connecting Advertisers, Media Owners (Sellers), and Platform Admins.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Requested: Step 1. Customer Books Site
+    Requested --> Approved: Step 2. Seller / Admin Approves
+    Approved --> MountingWindow: Step 3. Payment Paid (UPI/Card/NEFT)\nConfirmations sent to Seller & Admin\n3-Day Mounting Window Starts
+    
+    state MountingWindow {
+        [*] --> Phase1_FlexPickup: Phase 1. Pick up Flex
+        Phase1_FlexPickup --> Phase2_Mounting: Phase 2. Mounting on Structure
+        Phase2_Mounting --> Phase3_ProofUpload: Phase 3. Photo Upload (Date & Time)
+    }
+    
+    MountingWindow --> VerificationPending: Photo Stamped & Uploaded\n4-Hour Customer/Admin Verification Window Starts
+    
+    state VerificationPending {
+        Verify_Customer: Customer Approves
+        Verify_Admin: Admin Approves / Overrides
+        Verify_Auto: 4-Hour Countdown Expires
+    }
+    
+    VerificationPending --> Active: Verified (or 4 Hours Elapsed)\nSubscription Officially Starts!
+    Active --> [*]: Campaign Duration Completes
+```
+
+### The Complete 5-Step Order Lifecycle
+
+1. **Step 1: Reservation Request (`requested`)**:
+   - Advertiser chooses start & end dates and submits booking request.
+   - Hoarding calendar availability is locked against overlapping reservations.
+2. **Step 2: Seller Approval (`approved`)**:
+   - Media owner reviews the request on the Seller Desk and approves it.
+   - Payment action is now unlocked for the customer.
+3. **Step 3: Payment & Dispatch (`mounting_window`)**:
+   - Customer completes payment (Online UPI/Card or Offline NEFT/Cheque).
+   - Automated confirmations are dispatched to both Seller and Admin.
+   - The **3-Day Mounting Window (72 Hours)** automatically initiates (`mountingDetails.windowStartedAt` & `windowEndsAt`).
+4. **Step 4: Mounting Execution & Proof Upload (`verification_pending`)**:
+   - Seller executes the 3 field phases.
+   - Seller uploads proof photo stamped with capture date & time.
+   - The **4-Hour Customer/Admin Verification Window** begins (`verificationWindowExpiresAt`).
+5. **Step 5: Verification & Campaign Activation (`active`)**:
+   - Customer inspects proof and clicks **"Verify & Start Campaign"** (or reports issue).
+   - Admin can also verify or override.
+   - If 4 hours elapse without dispute, the background auto-verifier automatically transitions the campaign to `active`.
+   - Subscription date range (`subscriptionStartDate` to `subscriptionEndDate`) officially commences.
+
+---
+
+### The 3-Phase Mounting Workflow
+
+During the 3-day window, the pipeline tracks 3 discrete operational phases visible across Customer, Seller, and Admin desks:
+
+| Phase | Name | Action & Responsibility | Status Values |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | **Flex Pick up** | Seller picks up printed vinyl flex banner from customer location. | `pending` ➔ `in_progress` ➔ `completed` |
+| **Phase 2** | **Mounting** | Field rigging crew stretches, fastens, and mounts the flex on the billboard frame. | `pending` ➔ `in_progress` ➔ `completed` |
+| **Phase 3** | **Confirmation** | Seller captures high-resolution photo with timestamp and uploads for verification. | `pending` ➔ `proof_uploaded` ➔ `verified` |
+
+---
+
+### Collapsible Dropdown UI Architecture (Web & Mobile)
+
+To prevent the mounting tracker from cluttering cards with excessive vertical height, both Web and Mobile implement an accordion / collapsible dropdown pattern:
+
+#### 1. Web Implementation (`client-web/src/components/MountingTracker.jsx`)
+- **Default State**: Collapsed / closed (`defaultOpen = false`).
+- **Compact Summary Bar**:
+  - Displays **Current Phase Chip** (e.g., `Phase 1: Flex Pick up`, `Phase 2: Mounting In Progress`, `Phase 3: Verification Window`, or `Verified & Active`).
+  - Displays **Live Countdown Timers** (Amber chip for remaining mounting window hours; Purple chip with live ticking seconds for the 4-hour verification window).
+  - Toggle button: **"Open Pipeline"** with `ChevronDown` (switches to **"Close Pipeline"** with `ChevronUp`).
+- **Interactive Details (On Expand)**:
+  - 3 Phase Cards with progress badges.
+  - Phase 1 & 2 action buttons (`Start Pickup`, `Mark Done`, `Start Mounting`).
+  - Phase 3 Photo Proof upload form (for Seller/Admin).
+  - 4-Hour Customer Inspection Bar with proof image preview, timestamp, and verification buttons (`Report Mounting Issue` / `Verify & Start Campaign`).
+  - Active Campaign details card.
+
+#### 2. Mobile Implementation (`client-mobile`)
+- Located in:
+  - [`SellerDashboardScreen.js`](file:///d:/Adverse/client-mobile/src/screens/SellerDashboardScreen.js) (`SellerMountingTracker`)
+  - [`MyBookingsScreen.js`](file:///d:/Adverse/client-mobile/src/screens/MyBookingsScreen.js) (`MobileMountingTracker`)
+- Features a touchable summary header (`TouchableOpacity`) with `expanded` state:
+  - Shows `MOUNTING PIPELINE` badge and remaining countdown chip.
+  - Features `chevron-down` / `chevron-up` icon to expand on demand.
+  - Keeps mobile booking cards compact and readable.
+
+---
+
+### Super Admin Window Governance & Overrides
+
+Super Admins hold full administrative authority to edit, override, or extend any stage of the pipeline at any point:
+
+#### Admin Controls in `AdminDashboardPage.jsx`:
+In the **"Apply Admin Override"** modal, Super Admins can configure:
+1. **Mounting Window Duration**:
+   - Quick duration in **Days** (e.g. 3, 5, 7 days) — dynamically recalculates `windowEndsAt`.
+   - Or set a specific deadline timestamp (`datetime-local`).
+2. **Customer Verification Window Duration**:
+   - Quick duration in **Hours** (e.g. 4, 12, 24 hours) — dynamically recalculates `verificationWindowExpiresAt`.
+   - Or set a specific expiration timestamp (`datetime-local`).
+3. **Phases & Statuses**:
+   - Override any phase (`flexPickupStatus`, `mountingStatus`, `confirmationStatus`) or general booking status directly.
+
+#### Backend Implementation (`server/src/modules/bookings/booking.controller.js`):
+- Endpoint: `PUT /api/bookings/:id/admin-override`
+- Receives `mountingWindowDays`, `windowEndsAt`, `verificationWindowHours`, `verificationWindowExpiresAt`.
+- Automatically logs all administrative adjustments into the booking's permanent audit `timeline`.
+
+---
+
+### Configuring Default Window Durations in Code
+
+The default durations are defined as clean, top-level constants at the top of the booking controller:
+
+**File:** [`server/src/modules/bookings/booking.controller.js`](file:///d:/Adverse/server/src/modules/bookings/booking.controller.js#L10-L13)
+
+```javascript
+// ============================================================================
+// CONFIGURABLE DEFAULT TIMINGS & WINDOW DURATIONS
+// Change these constants anytime to adjust the platform defaults:
+// - DEFAULT_MOUNTING_WINDOW_DAYS: e.g. 3 for 3-day mounting window
+// - DEFAULT_VERIFICATION_WINDOW_HOURS: e.g. 4 for 4-hour customer verification window
+// ============================================================================
+const DEFAULT_MOUNTING_WINDOW_DAYS = 3;       // <-- Change this number to alter default mounting window
+const DEFAULT_VERIFICATION_WINDOW_HOURS = 4;   // <-- Change this number to alter default customer verification window
+```
+
+#### Where they are applied in code:
+1. **Initiating Mounting Window after Payment** ([Line 324](file:///d:/Adverse/server/src/modules/bookings/booking.controller.js#L324)):
+   ```javascript
+   const windowEnds = new Date(now.getTime() + DEFAULT_MOUNTING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+   ```
+2. **Initiating Verification Window after Proof Upload** ([Line 459](file:///d:/Adverse/server/src/modules/bookings/booking.controller.js#L459)):
+   ```javascript
+   const verificationExpires = new Date(now.getTime() + DEFAULT_VERIFICATION_WINDOW_HOURS * 60 * 60 * 1000);
+   ```
+
+*Modifying these two numbers instantly updates the default duration for all subsequent bookings and proof uploads across the platform.*
+
 
