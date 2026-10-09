@@ -26,6 +26,7 @@ function MobileMountingTracker({ booking, onRefresh }) {
   const [showIssueBox, setShowIssueBox] = useState(false);
   const [timeLeftMounting, setTimeLeftMounting] = useState('');
   const [timeLeftVerification, setTimeLeftVerification] = useState('');
+  const [expanded, setExpanded] = useState(false);
 
   const m = booking?.mountingDetails || {};
   const isMountingWindow = booking.bookingStatus === 'mounting_window' || booking.bookingStatus === 'confirmed';
@@ -116,8 +117,12 @@ function MobileMountingTracker({ booking, onRefresh }) {
 
   return (
     <View style={styles.trackerContainer}>
-      {/* Tracker Header */}
-      <View style={styles.trackerHeader}>
+      {/* Tracker Collapsible Header */}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => setExpanded(!expanded)}
+        style={styles.trackerHeader}
+      >
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={styles.windowTag}>
@@ -128,20 +133,30 @@ function MobileMountingTracker({ booking, onRefresh }) {
           <Text style={styles.trackerTitle}>Mounting & Verification Pipeline</Text>
         </View>
 
-        {isMountingWindow && timeLeftMounting ? (
-          <View style={styles.timerChipAmber}>
-            <Ionicons name="time-outline" size={13} color="#b45309" />
-            <Text style={styles.timerChipAmberText}>{timeLeftMounting} left</Text>
-          </View>
-        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {isMountingWindow && timeLeftMounting ? (
+            <View style={styles.timerChipAmber}>
+              <Ionicons name="time-outline" size={12} color="#b45309" />
+              <Text style={styles.timerChipAmberText}>{timeLeftMounting}</Text>
+            </View>
+          ) : null}
 
-        {isVerificationPending && timeLeftVerification ? (
-          <View style={styles.timerChipPurple}>
-            <Ionicons name="hourglass-outline" size={13} color="#7e22ce" />
-            <Text style={styles.timerChipPurpleText}>{timeLeftVerification}</Text>
+          {isVerificationPending && timeLeftVerification ? (
+            <View style={styles.timerChipPurple}>
+              <Ionicons name="hourglass-outline" size={12} color="#7e22ce" />
+              <Text style={styles.timerChipPurpleText}>{timeLeftVerification}</Text>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#eef2ff', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 8 }}>
+            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color="#4f46e5" />
           </View>
-        ) : null}
-      </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Expanded Pipeline Details */}
+      {expanded && (
+        <View style={{ marginTop: 10 }}>
 
       {/* 3 PHASES STEPPER */}
       <View style={styles.phasesRow}>
@@ -310,6 +325,8 @@ function MobileMountingTracker({ booking, onRefresh }) {
               <Text style={styles.proofLinkText}>Proof Photo</Text>
             </TouchableOpacity>
           )}
+        </View>
+      )}
         </View>
       )}
     </View>

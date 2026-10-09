@@ -67,6 +67,10 @@ export default function AdminDashboardPage() {
     proofCaptureDateTime: '',
     subscriptionStartDate: '',
     subscriptionEndDate: '',
+    mountingWindowDays: '',
+    windowEndsAt: '',
+    verificationWindowHours: '',
+    verificationWindowExpiresAt: '',
     adminNotes: ''
   });
 
@@ -85,6 +89,14 @@ export default function AdminDashboardPage() {
         : '',
       subscriptionEndDate: b.subscriptionEndDate
         ? new Date(b.subscriptionEndDate).toISOString().split('T')[0]
+        : '',
+      mountingWindowDays: '',
+      windowEndsAt: b.mountingDetails?.windowEndsAt
+        ? new Date(b.mountingDetails.windowEndsAt).toISOString().slice(0, 16)
+        : '',
+      verificationWindowHours: '',
+      verificationWindowExpiresAt: b.mountingDetails?.verificationWindowExpiresAt
+        ? new Date(b.mountingDetails.verificationWindowExpiresAt).toISOString().slice(0, 16)
         : '',
       adminNotes: ''
     });
@@ -1672,6 +1684,71 @@ export default function AdminDashboardPage() {
                       <option value="verified">verified</option>
                       <option value="rejected">rejected</option>
                     </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Window Durations Overrides (Mounting Window & Customer Verification Window) */}
+              <div className="p-3.5 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    Mounting & Verification Window Timings
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md">
+                    Admin Governance
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Mounting Window Duration */}
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-200/60 space-y-1.5">
+                    <label className="block font-bold text-slate-800 text-[11px]">
+                      Mounting Window (Days)
+                    </label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      placeholder="e.g. 3 (Default: 3 days)"
+                      value={overrideForm.mountingWindowDays}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, mountingWindowDays: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold"
+                    />
+                    <div className="text-[10px] text-slate-500 font-medium">
+                      Or set custom deadline (date/time):
+                    </div>
+                    <input
+                      type="datetime-local"
+                      value={overrideForm.windowEndsAt}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, windowEndsAt: e.target.value })}
+                      className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-mono"
+                    />
+                  </div>
+
+                  {/* Customer Verification Window Duration */}
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-200/60 space-y-1.5">
+                    <label className="block font-bold text-slate-800 text-[11px]">
+                      Customer Verification (Hours)
+                    </label>
+                    <input
+                      type="number"
+                      min="0.25"
+                      step="0.25"
+                      placeholder="e.g. 4 (Default: 4 hours)"
+                      value={overrideForm.verificationWindowHours}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, verificationWindowHours: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold"
+                    />
+                    <div className="text-[10px] text-slate-500 font-medium">
+                      Or set custom expiry (date/time):
+                    </div>
+                    <input
+                      type="datetime-local"
+                      value={overrideForm.verificationWindowExpiresAt}
+                      onChange={(e) => setOverrideForm({ ...overrideForm, verificationWindowExpiresAt: e.target.value })}
+                      className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-mono"
+                    />
                   </div>
                 </div>
               </div>

@@ -2,13 +2,22 @@ const Booking = require('../../models/Booking');
 const Hoarding = require('../../models/Hoarding');
 const Payment = require('../../models/Payment');
 
+// ============================================================================
+// CONFIGURABLE DEFAULT TIMINGS & WINDOW DURATIONS
+// Change these constants anytime to adjust the platform defaults:
+// - DEFAULT_MOUNTING_WINDOW_DAYS: e.g. 3 for 3-day mounting window
+// - DEFAULT_VERIFICATION_WINDOW_HOURS: e.g. 4 for 4-hour customer verification window
+// ============================================================================
+const DEFAULT_MOUNTING_WINDOW_DAYS = 3;       // 3 days (72 hours) mounting window
+const DEFAULT_VERIFICATION_WINDOW_HOURS = 4;   // 4 hours customer verification window
+
 function generateBookingNumber() {
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
   const timestamp = Date.now().toString().slice(-4);
   return `BK-WB-${timestamp}-${randomSuffix}`;
 }
 
-// Helper: Check and auto-verify 4-hour expired verification windows
+// Helper: Check and auto-verify expired verification windows
 async function checkAndAutoVerifyBooking(booking) {
   if (!booking) return booking;
 
@@ -310,9 +319,9 @@ exports.processBookingPayment = async (req, res, next) => {
       }
     });
 
-    // Update Booking status to mounting_window & initiate 3-day window
+    // Update Booking status to mounting_window & initiate mounting window
     const now = new Date();
-    const windowEnds = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // exactly 3 days (72 hours)
+    const windowEnds = new Date(now.getTime() + DEFAULT_MOUNTING_WINDOW_DAYS * 24 * 60 * 60 * 1000); // Configurable mounting window (default 3 days / 72 hours)
 
     booking.paymentStatus = 'paid';
     booking.bookingStatus = 'mounting_window';
@@ -447,7 +456,7 @@ exports.uploadMountingProof = async (req, res, next) => {
     }
 
     const now = new Date();
-    const fourHoursLater = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4-hour countdown window
+    const verificationExpires = new Date(now.getTime() + DEFAULT_VERIFICATION_WINDOW_HOURS * 60 * 60 * 1000); // Configurable customer verification countdown window (default 4 hours)
 
     if (!booking.mountingDetails) booking.mountingDetails = {};
 
@@ -460,15 +469,15 @@ exports.uploadMountingProof = async (req, res, next) => {
     booking.mountingDetails.proofNotes = notes || '';
     booking.mountingDetails.proofUploadedBy = req.user.id;
 
-    // Start 4-Hour Customer/Admin Verification Window
+    // Start Customer/Admin Verification Window
     booking.mountingDetails.verificationWindowStartedAt = now;
-    booking.mountingDetails.verificationWindowExpiresAt = fourHoursLater;
+    booking.mountingDetails.verificationWindowExpiresAt = verificationExpires;
     booking.bookingStatus = 'verification_pending';
 
     booking.timeline.push({
       event: 'phase3_proof_uploaded',
       title: 'Phase 3 (Confirmation): Proof Photo Uploaded',
-      description: `Hoarding photo with date & time (${booking.mountingDetails.proofCaptureDateTime}) uploaded. 4-Hour verification window started. Customer and Admin have 4 hours to verify before campaign activates.`,
+      description: `Hoarding photo with date & time (${booking.mountingDetails.proofCaptureDateTime}) uploaded. Verification window started. Customer and Admin have ${DEFAULT_VERIFICATION_WINDOW_HOURS} hours to verify before campaign activates.`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       timestamp: now
@@ -580,6 +589,10 @@ exports.adminOverrideBooking = async (req, res, next) => {
       proofCaptureDateTime,
       subscriptionStartDate,
       subscriptionEndDate,
+      mountingWindowDays,
+      windowEndsAt,
+      verificationWindowHours,
+      verificationWindowExpiresAt,
       adminNotes
     } = req.body;
 
@@ -612,14 +625,38 @@ exports.adminOverrideBooking = async (req, res, next) => {
     if (subscriptionStartDate) booking.subscriptionStartDate = new Date(subscriptionStartDate);
     if (subscriptionEndDate) booking.subscriptionEndDate = new Date(subscriptionEndDate);
 
+    // Admin custom adjustment for 3-Day Mounting Window
+    if (windowEndsAt) {
+      booking.mountingDetails.windowEndsAt = new Date(windowEndsAt);
+    } else if (mountingWindowDays !== undefined && mountingWindowDays !== null && mountingWindowDays !== '') {
+      const days = parseFloat(mountingWindowDays);
+      if (!isNaN(days) && days > 0) {
+        const base = booking.mountingDetails.windowStartedAt ? new Date(booking.mountingDetails.windowStartedAt) : new Date();
+        booking.mountingDetails.windowEndsAt = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+      }
+    }
+
+    // Admin custom adjustment for Customer Verification Window (4 Hours)
+    if (verificationWindowExpiresAt) {
+      booking.mountingDetails.verificationWindowExpiresAt = new Date(verificationWindowExpiresAt);
+    } else if (verificationWindowHours !== undefined && verificationWindowHours !== null && verificationWindowHours !== '') {
+      const hours = parseFloat(verificationWindowHours);
+      if (!isNaN(hours) && hours > 0) {
+        const base = booking.mountingDetails.verificationWindowStartedAt ? new Date(booking.mountingDetails.verificationWindowStartedAt) : new Date();
+        booking.mountingDetails.verificationWindowExpiresAt = new Date(base.getTime() + hours * 60 * 60 * 1000);
+      }
+    }
+
     booking.mountingDetails.adminVerified = true;
     booking.mountingDetails.adminVerifiedAt = new Date();
     if (adminNotes) booking.mountingDetails.adminNotes = adminNotes;
 
+    booking.markModified('mountingDetails');
+
     booking.timeline.push({
       event: 'admin_override',
       title: 'Admin Override Applied',
-      description: adminNotes || `Super Admin updated status to '${booking.bookingStatus}' and adjusted mounting phases.`,
+      description: adminNotes || `Super Admin updated status to '${booking.bookingStatus}' and adjusted mounting window timings.`,
       performedBy: req.user.id,
       performedByRole: 'admin',
       timestamp: new Date()
