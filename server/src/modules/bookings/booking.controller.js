@@ -45,8 +45,24 @@ async function checkAndAutoVerifyBooking(booking) {
     });
 
     await booking.save();
+    await syncHoardingAvailability(booking.hoardingId);
   }
   return booking;
+}
+
+// Helper: Synchronize hoarding availabilityStatus based on active bookings
+async function syncHoardingAvailability(hoardingId) {
+  if (!hoardingId) return;
+  try {
+    const activeBooking = await Booking.findOne({
+      hoardingId,
+      bookingStatus: { $in: ['active', 'confirmed', 'mounting_window', 'verification_pending'] }
+    });
+    const targetStatus = activeBooking ? 'occupied' : 'available';
+    await Hoarding.findByIdAndUpdate(hoardingId, { availabilityStatus: targetStatus });
+  } catch (err) {
+    console.error('Failed to sync hoarding availability:', err);
+  }
 }
 
 /**
@@ -262,6 +278,8 @@ exports.handleSellerApproval = async (req, res, next) => {
     }
 
     await booking.save();
+    await syncHoardingAvailability(booking.hoardingId);
+
     res.status(200).json({
       success: true,
       message: `Booking has been ${action === 'approve' ? 'approved' : 'rejected'}.`,
@@ -354,6 +372,7 @@ exports.processBookingPayment = async (req, res, next) => {
     });
 
     await booking.save();
+    await syncHoardingAvailability(booking.hoardingId);
 
     res.status(200).json({
       success: true,
@@ -601,7 +620,25 @@ exports.adminOverrideBooking = async (req, res, next) => {
 
     if (!booking.mountingDetails) booking.mountingDetails = {};
 
-    if (bookingStatus) booking.bookingStatus = bookingStatus;
+    if (bookingStatus) {
+      booking.bookingStatus = bookingStatus;
+
+      // Keep sellerApproval in sync with overall booking status
+      if (!booking.sellerApproval) booking.sellerApproval = {};
+      if (['approved', 'mounting_window', 'verification_pending', 'active', 'completed'].includes(bookingStatus)) {
+        booking.sellerApproval.status = 'approved';
+        if (!booking.sellerApproval.actionAt) {
+          booking.sellerApproval.actionAt = new Date();
+          booking.sellerApproval.actionBy = req.user.id;
+          booking.sellerApproval.notes = adminNotes || 'Approved via Admin Governance Override';
+        }
+      } else if (['rejected', 'cancelled'].includes(bookingStatus)) {
+        booking.sellerApproval.status = 'rejected';
+        booking.sellerApproval.actionAt = new Date();
+        booking.sellerApproval.actionBy = req.user.id;
+        booking.sellerApproval.notes = adminNotes || 'Declined via Admin Governance Override';
+      }
+    }
     if (paymentStatus) booking.paymentStatus = paymentStatus;
 
     if (flexPickupStatus) {
@@ -663,6 +700,7 @@ exports.adminOverrideBooking = async (req, res, next) => {
     });
 
     await booking.save();
+    await syncHoardingAvailability(booking.hoardingId);
 
     res.status(200).json({
       success: true,
@@ -686,7 +724,16 @@ exports.updateBookingStatus = async (req, res, next) => {
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
 
     booking.bookingStatus = bookingStatus;
+    if (!booking.sellerApproval) booking.sellerApproval = {};
+    if (['approved', 'mounting_window', 'verification_pending', 'active', 'completed'].includes(bookingStatus)) {
+      booking.sellerApproval.status = 'approved';
+    } else if (['rejected', 'cancelled'].includes(bookingStatus)) {
+      booking.sellerApproval.status = 'rejected';
+    }
+
     await booking.save();
+    await syncHoardingAvailability(booking.hoardingId);
+
     res.status(200).json({ success: true, message: 'Booking status updated.', booking });
   } catch (error) {
     next(error);

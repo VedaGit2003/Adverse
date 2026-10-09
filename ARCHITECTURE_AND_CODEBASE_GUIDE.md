@@ -33,6 +33,10 @@ This document is designed to teach you the system architecture, file structure, 
    - [Collapsible Dropdown UI Architecture (Web & Mobile)](#collapsible-dropdown-ui-architecture-web--mobile)
    - [Super Admin Window Governance & Overrides](#super-admin-window-governance--overrides)
    - [Configuring Default Window Durations in Code](#configuring-default-window-durations-in-code)
+9. [Hoarding Inventory & Booking Status Synchronization](#9-hoarding-inventory--booking-status-synchronization)
+   - [Hoarding Availability State Machine](#hoarding-availability-state-machine)
+   - [Automatic Release on Campaign Expiration & Completion](#automatic-release-on-campaign-expiration--completion)
+   - [Cross-Platform Status Normalization](#cross-platform-status-normalization)
 
 ---
 
@@ -480,5 +484,58 @@ const DEFAULT_VERIFICATION_WINDOW_HOURS = 4;   // <-- Change this number to alte
    ```
 
 *Modifying these two numbers instantly updates the default duration for all subsequent bookings and proof uploads across the platform.*
+
+---
+
+## 9. Hoarding Inventory & Booking Status Synchronization
+
+A critical architectural requirement in the Adverse platform is strict inventory consistency: **the availability status of physical hoarding sites (`Hoarding.availabilityStatus`) must always reflect the active booking lifecycle state (`Booking.bookingStatus`) in real-time across Customer, Seller, and Admin views.**
+
+### Hoarding Availability State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Available: Hoarding Listed & Approved
+    Available --> Occupied: Booking Payment Processed / Admin Activates
+    Occupied --> Occupied: Mounting Window (3-Days)
+    Occupied --> Occupied: Proof Verification (4-Hours)
+    Occupied --> Occupied: Active Campaign
+    Occupied --> Available: Campaign Expired (Completed) / Cancelled
+```
+
+- **Active Booking Lifecycle States (Occupied):** `confirmed`, `mounting_window`, `verification_pending`, `active`.
+- **Released Booking Lifecycle States (Available):** `requested`, `approved`, `completed`, `cancelled`, `rejected`.
+
+### Automatic Release on Campaign Expiration & Completion
+
+To prevent hoardings from remaining stuck as `"Booked"` / `"occupied"` when campaigns expire, the system uses the centralized synchronizer helper:
+
+```javascript
+// server/src/modules/bookings/booking.controller.js
+const syncHoardingAvailability = async (hoardingId) => {
+  if (!hoardingId) return;
+  const activeBookings = await Booking.find({
+    hoardingId,
+    bookingStatus: { $in: ['active', 'confirmed', 'mounting_window', 'verification_pending'] }
+  });
+  const targetStatus = activeBookings.length > 0 ? 'occupied' : 'available';
+  await Hoarding.findByIdAndUpdate(hoardingId, { availabilityStatus: targetStatus });
+};
+```
+
+1. **Auto-Verification Expiration:** When customer verification window expires without dispute, the campaign starts.
+2. **Admin Override / Campaign Completion:** When Super Admin or a cron worker sets status to `completed` or `cancelled`, `syncHoardingAvailability` evaluates any remaining active bookings for that hoarding. If none remain, `availabilityStatus` is immediately set back to `'available'`.
+3. **Database Auto-Reconciliation on Startup (`server/src/config/autoSeed.js`):** On every server launch, the platform reconciles all hoardings in MongoDB against live bookings, ensuring self-healing if a database instance was previously modified offline.
+
+### Cross-Platform Status Normalization
+
+To avoid inconsistent UI badges (e.g. Completed bookings falling through to "Pending Approval"):
+
+1. **Sub-document Sync (`sellerApproval.status`):** When an Admin marks a booking as `approved`, `mounting_window`, `verification_pending`, `active`, or `completed`, the embedded `sellerApproval.status` is synchronized to `'approved'` instead of remaining stuck at `'pending'`.
+2. **Web & Mobile Status Badges:**
+   - **Customer Web & Mobile:** Explicitly maps `completed` to **"Completed (Campaign Expired)"** with a dedicated gray badge, releasing visual clutter and displaying a completion explanation banner.
+   - **Seller Web & Mobile:** Features dedicated **"Completed (Expired)"** tags, statistics counters, and explains that the site is free for new bookings.
+   - **Super Admin Governance:** Displays **"Completed (Expired)"** in the governance table alongside an **"Active Only" / "Completed" / "All Bookings"** filter toggle.
+
 
 

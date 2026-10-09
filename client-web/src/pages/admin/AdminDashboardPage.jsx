@@ -836,6 +836,16 @@ export default function AdminDashboardPage() {
                     Active Only ({activeBookingsCount})
                   </button>
                   <button
+                    onClick={() => setBookingFilterStatus('completed')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                      bookingFilterStatus === 'completed'
+                        ? 'bg-white text-indigo-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Completed ({bookings.filter((b) => b.bookingStatus === 'completed').length})
+                  </button>
+                  <button
                     onClick={() => setBookingFilterStatus('all')}
                     className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
                       bookingFilterStatus === 'all'
@@ -1014,6 +1024,15 @@ export default function AdminDashboardPage() {
                                 ) : b.bookingStatus === 'requested' ? (
                                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200">
                                     Pending Approval
+                                  </span>
+                                ) : b.bookingStatus === 'completed' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-slate-500" />
+                                    Completed (Expired)
+                                  </span>
+                                ) : b.bookingStatus === 'cancelled' || b.bookingStatus === 'rejected' ? (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                    {b.bookingStatus === 'cancelled' ? 'Cancelled' : 'Rejected'}
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">

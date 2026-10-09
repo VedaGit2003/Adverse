@@ -1112,6 +1112,9 @@ export default function SellerDashboardPage() {
                 <span className="px-3 py-1 bg-emerald-50 text-emerald-800 font-bold rounded-xl border border-emerald-200">
                   {(bookings || []).filter((b) => b.bookingStatus === 'active').length} Active
                 </span>
+                <span className="px-3 py-1 bg-slate-100 text-slate-700 font-bold rounded-xl border border-slate-300">
+                  {(bookings || []).filter((b) => b.bookingStatus === 'completed').length} Completed
+                </span>
               </div>
             </div>
 
@@ -1131,6 +1134,8 @@ export default function SellerDashboardPage() {
                   const isMountingWindow = b.bookingStatus === 'mounting_window' || b.bookingStatus === 'confirmed';
                   const isVerificationPending = b.bookingStatus === 'verification_pending';
                   const isActive = b.bookingStatus === 'active';
+                  const isCompleted = b.bookingStatus === 'completed';
+                  const isRejected = b.bookingStatus === 'rejected' || b.bookingStatus === 'cancelled';
 
                   return (
                     <div
@@ -1194,6 +1199,45 @@ export default function SellerDashboardPage() {
                               Payment: {b.paymentStatus}
                             </div>
                           </div>
+
+                          {/* Live Status Badge */}
+                          <div className="shrink-0 flex items-center">
+                            {isRequested && (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-200">
+                                Pending Approval
+                              </span>
+                            )}
+                            {isApproved && (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase bg-blue-100 text-blue-800 border border-blue-200">
+                                Approved (Awaiting Pay)
+                              </span>
+                            )}
+                            {isMountingWindow && (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                Mounting Window
+                              </span>
+                            )}
+                            {isVerificationPending && (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase bg-purple-100 text-purple-800 border border-purple-200">
+                                Verification Window
+                              </span>
+                            )}
+                            {isActive && (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Active Campaign
+                              </span>
+                            )}
+                            {isCompleted && (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase bg-slate-100 text-slate-700 border border-slate-300">
+                                Completed (Expired)
+                              </span>
+                            )}
+                            {isRejected && (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-200">
+                                Declined
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -1244,8 +1288,18 @@ export default function SellerDashboardPage() {
                         </div>
                       )}
 
+                      {/* COMPLETED STATE (Campaign Expired) */}
+                      {isCompleted && (
+                        <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 flex items-center gap-3 text-xs text-slate-700">
+                          <CheckCircle2 className="w-5 h-5 text-slate-500 shrink-0" />
+                          <div>
+                            <strong>Campaign Expired & Completed:</strong> This booking has concluded its campaign duration. The hoarding site has been automatically released to <strong>Available</strong> for new advertisers to book.
+                          </div>
+                        </div>
+                      )}
+
                       {/* MOUNTING TRACKER PIPELINE */}
-                      {(isMountingWindow || isVerificationPending || isActive) && (
+                      {(isMountingWindow || isVerificationPending || isActive || isCompleted) && (
                         <div>
                           <MountingTracker
                             booking={b}

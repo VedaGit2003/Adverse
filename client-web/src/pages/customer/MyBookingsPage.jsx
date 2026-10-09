@@ -114,6 +114,19 @@ export default function MyBookingsPage() {
             Subscription Active
           </span>
         );
+      case 'completed':
+        return (
+          <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-slate-100 text-slate-800 border border-slate-300 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-slate-600" />
+            Completed (Campaign Expired)
+          </span>
+        );
+      case 'cancelled':
+        return (
+          <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-rose-100 text-rose-900 border border-rose-200">
+            Cancelled
+          </span>
+        );
       case 'rejected':
         return (
           <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-rose-100 text-rose-900 border border-rose-200">
@@ -180,7 +193,8 @@ export default function MyBookingsPage() {
             {bookings.map((b) => {
               const isApproved = b.bookingStatus === 'approved';
               const isRequested = b.bookingStatus === 'requested';
-              const isMountingOrLater = ['mounting_window', 'verification_pending', 'active', 'confirmed'].includes(b.bookingStatus);
+              const isCompleted = b.bookingStatus === 'completed';
+              const isMountingOrLater = ['mounting_window', 'verification_pending', 'active', 'confirmed', 'completed'].includes(b.bookingStatus);
               const isExpanded = expandedBookingId === b._id || isMountingOrLater || isApproved;
 
               return (
@@ -279,6 +293,16 @@ export default function MyBookingsPage() {
                         <Clock className="w-4 h-4 text-amber-600 shrink-0" />
                         <span>
                           <strong>Waiting for Seller Approval:</strong> The media owner ({b.sellerId?.companyDetails?.companyName || b.sellerId?.name || 'Seller'}) has been notified. The payment option will be enabled immediately once they approve your slot.
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Explanatory banner for completed status */}
+                    {isCompleted && (
+                      <div className="mt-4 p-3 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0" />
+                        <span>
+                          <strong>Campaign Completed:</strong> This billboard campaign subscription has run its full duration and expired. The hoarding site is now released and open for new bookings.
                         </span>
                       </div>
                     )}

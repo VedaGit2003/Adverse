@@ -897,6 +897,8 @@ export default function SellerDashboardScreen({ navigation }) {
                 const isMountingWindow = b.bookingStatus === 'mounting_window' || b.bookingStatus === 'confirmed';
                 const isVerificationPending = b.bookingStatus === 'verification_pending';
                 const isActive = b.bookingStatus === 'active';
+                const isCompleted = b.bookingStatus === 'completed';
+                const isRejected = b.bookingStatus === 'rejected' || b.bookingStatus === 'cancelled';
 
                 return (
                   <View key={b._id} style={styles.sellerBookingCard}>
@@ -926,20 +928,26 @@ export default function SellerDashboardScreen({ navigation }) {
                         isRequested && styles.statusTagAmber,
                         isApproved && styles.statusTagBlue,
                         (isMountingWindow || isVerificationPending) && styles.statusTagPurple,
-                        isActive && styles.statusTagGreen
+                        isActive && styles.statusTagGreen,
+                        isCompleted && styles.statusTagGray,
+                        isRejected && styles.statusTagRed
                       ]}>
                         <Text style={[
                           styles.sellerStatusTagText,
                           isRequested && styles.statusTagAmberText,
                           isApproved && styles.statusTagBlueText,
                           (isMountingWindow || isVerificationPending) && styles.statusTagPurpleText,
-                          isActive && styles.statusTagGreenText
+                          isActive && styles.statusTagGreenText,
+                          isCompleted && styles.statusTagGrayText,
+                          isRejected && styles.statusTagRedText
                         ]}>
                           {isRequested ? 'PENDING APPROVAL' :
                            isApproved ? 'AWAITING PAYMENT' :
                            isMountingWindow ? 'MOUNTING WINDOW' :
                            isVerificationPending ? 'VERIFICATION PENDING' :
-                           isActive ? 'ACTIVE' : (b.bookingStatus || '').toUpperCase()}
+                           isActive ? 'ACTIVE' :
+                           isCompleted ? 'COMPLETED (EXPIRED)' :
+                           isRejected ? 'DECLINED' : (b.bookingStatus || '').toUpperCase()}
                         </Text>
                       </View>
                     </View>
@@ -1009,8 +1017,19 @@ export default function SellerDashboardScreen({ navigation }) {
                       </View>
                     )}
 
+                    {/* COMPLETED STATE: CAMPAIGN EXPIRED */}
+                    {isCompleted && (
+                      <View style={styles.completedCallout}>
+                        <Ionicons name="checkmark-done-circle" size={18} color="#475569" />
+                        <Text style={styles.completedCalloutText}>
+                          <Text style={{ fontWeight: '900' }}>Campaign Concluded & Expired: </Text>
+                          This billboard booking has reached the end of its subscription period. The hoarding site is now released and available for new bookings.
+                        </Text>
+                      </View>
+                    )}
+
                     {/* MOUNTING TRACKER PIPELINE */}
-                    {(isMountingWindow || isVerificationPending || isActive) && (
+                    {(isMountingWindow || isVerificationPending || isActive || isCompleted) && (
                       <SellerMountingTracker
                         booking={b}
                         onRefresh={fetchSellerData}
@@ -1924,6 +1943,28 @@ const styles = StyleSheet.create({
   statusTagPurpleText: { color: '#6b21a8' },
   statusTagGreen: { backgroundColor: '#dcfce7' },
   statusTagGreenText: { color: '#166534' },
+  statusTagGray: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  statusTagGrayText: { color: '#475569' },
+  statusTagRed: { backgroundColor: '#fee2e2' },
+  statusTagRedText: { color: '#991b1b' },
+
+  completedCallout: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  completedCalloutText: {
+    fontSize: 11,
+    color: '#475569',
+    flex: 1,
+    lineHeight: 15,
+  },
 
   sellerBookingMetaRow: {
     flexDirection: 'row',

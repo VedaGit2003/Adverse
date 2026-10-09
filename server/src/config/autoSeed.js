@@ -289,6 +289,19 @@ const autoSeed = async () => {
         },
         { $set: { status: 'pending_verification' } }
       );
+
+      // Reconcile all hoardings' availabilityStatus with actual active bookings
+      const allHoardings = await Hoarding.find({}, '_id');
+      for (const h of allHoardings) {
+        const hasActive = await Booking.findOne({
+          hoardingId: h._id,
+          bookingStatus: { $in: ['active', 'confirmed', 'mounting_window', 'verification_pending'] }
+        });
+        await Hoarding.findByIdAndUpdate(h._id, {
+          availabilityStatus: hasActive ? 'occupied' : 'available'
+        });
+      }
+      console.log('✅ Synchronized all hoarding availability statuses with live bookings.');
     }
   } catch (error) {
     console.warn('⚠️ Auto-seed notice:', error.message);

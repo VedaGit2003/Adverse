@@ -460,6 +460,8 @@ export default function MyBookingsScreen({ navigation }) {
             const isMountingWindow = status === 'mounting_window' || status === 'confirmed';
             const isVerificationPending = status === 'verification_pending';
             const isActive = status === 'active';
+            const isCompleted = status === 'completed';
+            const isRejected = status === 'rejected' || status === 'cancelled';
             const hasMountingPipeline = isMountingWindow || isVerificationPending || isActive;
 
             return (
@@ -480,7 +482,9 @@ export default function MyBookingsScreen({ navigation }) {
                   <View
                     style={[
                       styles.statusPill,
-                      isActive
+                      isCompleted
+                        ? styles.pillCompleted
+                        : isActive
                         ? styles.pillActive
                         : isVerificationPending
                         ? styles.pillVerify
@@ -488,13 +492,17 @@ export default function MyBookingsScreen({ navigation }) {
                         ? styles.pillMounting
                         : isApproved
                         ? styles.pillApproved
+                        : isRejected
+                        ? styles.pillRejected
                         : styles.pillRequested,
                     ]}
                   >
                     <Text
                       style={[
                         styles.statusPillText,
-                        isActive
+                        isCompleted
+                          ? styles.pillCompletedText
+                          : isActive
                           ? styles.pillActiveText
                           : isVerificationPending
                           ? styles.pillVerifyText
@@ -502,10 +510,14 @@ export default function MyBookingsScreen({ navigation }) {
                           ? styles.pillMountingText
                           : isApproved
                           ? styles.pillApprovedText
+                          : isRejected
+                          ? styles.pillRejectedText
                           : styles.pillRequestedText,
                       ]}
                     >
-                      {isActive
+                      {isCompleted
+                        ? 'COMPLETED (EXPIRED)'
+                        : isActive
                         ? 'ACTIVE'
                         : isVerificationPending
                         ? 'VERIFY PROOF'
@@ -513,6 +525,8 @@ export default function MyBookingsScreen({ navigation }) {
                         ? 'MOUNTING WINDOW'
                         : isApproved
                         ? 'APPROVED'
+                        : isRejected
+                        ? 'REJECTED'
                         : 'PENDING APPROVAL'}
                     </Text>
                   </View>
@@ -530,6 +544,16 @@ export default function MyBookingsScreen({ navigation }) {
                     <Ionicons name="time" size={14} color="#b45309" />
                     <Text style={styles.requestedCalloutText}>
                       Awaiting site owner approval. Payment option will unlock as soon as the seller approves your requested dates.
+                    </Text>
+                  </View>
+                )}
+
+                {/* Explanatory callout for completed status */}
+                {isCompleted && (
+                  <View style={styles.completedCallout}>
+                    <Ionicons name="checkmark-done-circle" size={14} color="#475569" />
+                    <Text style={styles.completedCalloutText}>
+                      Campaign subscription term has ended. The hoarding space is now released and available.
                     </Text>
                   </View>
                 )}
@@ -816,6 +840,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
+  pillCompleted: { backgroundColor: '#f1f5f9' },
+  pillCompletedText: { color: '#475569', fontSize: 10, fontWeight: '900' },
+  pillRejected: { backgroundColor: '#ffe4e6' },
+  pillRejectedText: { color: '#be123c', fontSize: 10, fontWeight: '900' },
   pillActive: { backgroundColor: '#dcfce7' },
   pillActiveText: { color: '#166534', fontSize: 10, fontWeight: '900' },
   pillVerify: { backgroundColor: '#f3e8ff' },
@@ -826,6 +854,23 @@ const styles = StyleSheet.create({
   pillApprovedText: { color: '#1d4ed8', fontSize: 10, fontWeight: '900' },
   pillRequested: { backgroundColor: '#fef3c7' },
   pillRequestedText: { color: '#b45309', fontSize: 10, fontWeight: '900' },
+  completedCallout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    padding: 8,
+    marginTop: 8,
+  },
+  completedCalloutText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+    flex: 1,
+  },
   bookingDates: {
     fontSize: 11,
     color: '#64748b',
