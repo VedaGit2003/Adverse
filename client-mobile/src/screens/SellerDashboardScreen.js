@@ -29,7 +29,7 @@ function SellerMountingTracker({ booking, onRefresh, onOpenProofModal }) {
   const [updatingPhase, setUpdatingPhase] = useState(null);
 
   const m = booking?.mountingDetails || {};
-  const isMountingWindow = booking.bookingStatus === 'mounting_window';
+  const isMountingWindow = booking.bookingStatus === 'mounting_window' || booking.bookingStatus === 'confirmed';
   const isVerificationPending = booking.bookingStatus === 'verification_pending';
   const isActive = booking.bookingStatus === 'active';
 
@@ -877,7 +877,7 @@ export default function SellerDashboardScreen({ navigation }) {
               bookings.map(b => {
                 const isRequested = b.bookingStatus === 'requested';
                 const isApproved = b.bookingStatus === 'approved';
-                const isMountingWindow = b.bookingStatus === 'mounting_window';
+                const isMountingWindow = b.bookingStatus === 'mounting_window' || b.bookingStatus === 'confirmed';
                 const isVerificationPending = b.bookingStatus === 'verification_pending';
                 const isActive = b.bookingStatus === 'active';
 

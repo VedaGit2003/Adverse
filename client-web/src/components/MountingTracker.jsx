@@ -37,7 +37,7 @@ export default function MountingTracker({
   useEffect(() => {
     const updateCountdowns = () => {
       // 3-Day Mounting Window Countdown
-      if (m.windowEndsAt && (booking.bookingStatus === 'mounting_window' || booking.bookingStatus === 'verification_pending')) {
+      if (m.windowEndsAt && (['mounting_window', 'verification_pending', 'confirmed'].includes(booking.bookingStatus))) {
         const diff = new Date(m.windowEndsAt) - new Date();
         if (diff > 0) {
           const hours = Math.floor(diff / (1000 * 60 * 60));

@@ -180,7 +180,7 @@ export default function MyBookingsPage() {
             {bookings.map((b) => {
               const isApproved = b.bookingStatus === 'approved';
               const isRequested = b.bookingStatus === 'requested';
-              const isMountingOrLater = ['mounting_window', 'verification_pending', 'active'].includes(b.bookingStatus);
+              const isMountingOrLater = ['mounting_window', 'verification_pending', 'active', 'confirmed'].includes(b.bookingStatus);
               const isExpanded = expandedBookingId === b._id || isMountingOrLater || isApproved;
 
               return (

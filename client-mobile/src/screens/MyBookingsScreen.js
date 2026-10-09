@@ -28,7 +28,7 @@ function MobileMountingTracker({ booking, onRefresh }) {
   const [timeLeftVerification, setTimeLeftVerification] = useState('');
 
   const m = booking?.mountingDetails || {};
-  const isMountingWindow = booking.bookingStatus === 'mounting_window';
+  const isMountingWindow = booking.bookingStatus === 'mounting_window' || booking.bookingStatus === 'confirmed';
   const isVerificationPending = booking.bookingStatus === 'verification_pending';
   const isActive = booking.bookingStatus === 'active';
 
@@ -440,7 +440,7 @@ export default function MyBookingsScreen({ navigation }) {
             const status = item.bookingStatus || 'requested';
             const isRequested = status === 'requested';
             const isApproved = status === 'approved';
-            const isMountingWindow = status === 'mounting_window';
+            const isMountingWindow = status === 'mounting_window' || status === 'confirmed';
             const isVerificationPending = status === 'verification_pending';
             const isActive = status === 'active';
             const hasMountingPipeline = isMountingWindow || isVerificationPending || isActive;

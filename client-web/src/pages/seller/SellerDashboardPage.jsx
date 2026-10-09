@@ -775,6 +775,8 @@ export default function SellerDashboardPage() {
             </div>
             <div className="text-xs text-slate-500 mt-1">Reconciled payments</div>
           </div>
+        </div>
+
         {/* Navigation Tabs Bar */}
         <div className="flex border-b border-slate-200 overflow-x-auto gap-2 pb-1">
           <button
@@ -1105,7 +1107,7 @@ export default function SellerDashboardPage() {
                   {(bookings || []).filter((b) => b.bookingStatus === 'requested').length} Pending Approval
                 </span>
                 <span className="px-3 py-1 bg-indigo-50 text-indigo-800 font-bold rounded-xl border border-indigo-200">
-                  {(bookings || []).filter((b) => ['mounting_window', 'verification_pending'].includes(b.bookingStatus)).length} In Mounting Window
+                  {(bookings || []).filter((b) => ['mounting_window', 'verification_pending', 'confirmed'].includes(b.bookingStatus)).length} In Mounting Window
                 </span>
                 <span className="px-3 py-1 bg-emerald-50 text-emerald-800 font-bold rounded-xl border border-emerald-200">
                   {(bookings || []).filter((b) => b.bookingStatus === 'active').length} Active
@@ -1126,7 +1128,7 @@ export default function SellerDashboardPage() {
                 {bookings.map((b) => {
                   const isRequested = b.bookingStatus === 'requested';
                   const isApproved = b.bookingStatus === 'approved';
-                  const isMountingWindow = b.bookingStatus === 'mounting_window';
+                  const isMountingWindow = b.bookingStatus === 'mounting_window' || b.bookingStatus === 'confirmed';
                   const isVerificationPending = b.bookingStatus === 'verification_pending';
                   const isActive = b.bookingStatus === 'active';
 

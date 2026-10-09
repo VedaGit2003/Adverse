@@ -32,6 +32,7 @@ router.put('/:id/mounting-phase', verifyToken, authorizeRoles('seller', 'admin')
 
 // Mounting Window Phase 3: Confirmation (Seller uploads proof photo with date & time -> Starts 4-hour countdown)
 router.post('/:id/mounting-proof', verifyToken, authorizeRoles('seller', 'admin'), uploadMountingProof);
+router.put('/:id/mounting-proof', verifyToken, authorizeRoles('seller', 'admin'), uploadMountingProof);
 
 // 4-Hour Verification Window (Customer or Admin verifies -> Officially begins subscription date)
 router.put('/:id/verify-mounting', verifyToken, verifyMountingProof);
