@@ -1170,75 +1170,151 @@ export default function SellerDashboardScreen({ navigation }) {
 
                 return (
                   <View key={h._id} style={styles.inventoryCard}>
-                    <Image
-                      source={{
-                        uri: h.photos?.[0] || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=600&q=80'
-                      }}
-                      style={styles.inventoryCardImg}
-                    />
-                    <View style={styles.inventoryCardBody}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={styles.inventoryCity}>{h.location?.city || 'Kolkata'}</Text>
-                        <View style={[styles.statusPill, isAvail ? styles.pillAvail : styles.pillBooked]}>
-                          <Text style={[styles.statusPillText, isAvail ? styles.pillAvailText : styles.pillBookedText]}>
+                    {/* Top Image Banner with Badges */}
+                    <View style={styles.inventoryCardImgContainer}>
+                      <Image
+                        source={{
+                          uri: h.photos?.[0] || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
+                        }}
+                        style={styles.inventoryCardBannerImg}
+                        resizeMode="cover"
+                      />
+
+                      {/* Top Overlay Chips */}
+                      <View style={styles.cardTopOverlay}>
+                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                          <View style={styles.cardLocationChip}>
+                            <Ionicons name="location" size={11} color="#fff" />
+                            <Text style={styles.cardLocationChipText}>{h.location?.city || 'Kolkata'}</Text>
+                          </View>
+                          {h.hoardingType ? (
+                            <View style={styles.cardTypeChip}>
+                              <Text style={styles.cardTypeChipText}>{h.hoardingType}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <View style={[styles.statusPillLarge, isAvail ? styles.pillAvailLarge : styles.pillBookedLarge]}>
+                          <View style={[styles.statusDot, isAvail ? styles.statusDotAvail : styles.statusDotBooked]} />
+                          <Text style={[styles.statusPillTextLarge, isAvail ? styles.pillAvailTextLarge : styles.pillBookedTextLarge]}>
                             {isAvail ? 'AVAILABLE' : 'BOOKED'}
                           </Text>
                         </View>
                       </View>
 
-                      <Text style={styles.inventoryTitle} numberOfLines={1}>{h.title}</Text>
-                      <Text style={styles.inventoryAddress} numberOfLines={1}>{h.location?.address}</Text>
+                      {/* Bottom Overlay Chips (on image) */}
+                      <View style={styles.cardBottomOverlay}>
+                        {h.coverPhotoDeletionRequest?.status === 'pending' ? (
+                          <View style={styles.pendingCoverBanner}>
+                            <Ionicons name="time" size={12} color="#b45309" />
+                            <Text style={styles.pendingCoverBannerText}>Cover Deletion Pending Admin</Text>
+                          </View>
+                        ) : <View />}
 
-                      {h.coverPhotoDeletionRequest?.status === 'pending' && (
-                        <View style={styles.pendingCoverPill}>
-                          <Ionicons name="time" size={11} color="#b45309" />
-                          <Text style={styles.pendingCoverPillText}>Cover Deletion Pending Admin</Text>
-                        </View>
-                      )}
-
-                      <View style={styles.inventoryPriceRow}>
-                        <Text style={styles.inventoryPrice}>
-                          ₹{(h.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo
-                        </Text>
-
-                        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
-                          <TouchableOpacity
-                            onPress={() => setPhotoManagerHoarding(h)}
-                            style={styles.cardGalleryIconBtn}
-                          >
-                            <Ionicons name="images" size={13} color="#4f46e5" />
-                            <Text style={{ fontSize: 10, fontWeight: '800', color: '#4f46e5' }}>
-                              Photos ({h.photos?.length || 0})
-                            </Text>
-                            {h.coverPhotoDeletionRequest?.status === 'pending' && (
-                              <View style={styles.pendingDot} />
-                            )}
-                          </TouchableOpacity>
-
-                          {hasMaps && (
-                            <TouchableOpacity
-                              onPress={() => {
-                                const url = h.location?.googleMapsUrl ||
-                                  `https://www.google.com/maps?q=${h.location?.geo?.coordinates[1]},${h.location?.geo?.coordinates[0]}`;
-                                Linking.openURL(url);
-                              }}
-                              style={styles.cardMapsIconBtn}
-                            >
-                              <Ionicons name="navigate" size={14} color="#2563eb" />
-                              <Text style={{ fontSize: 10, fontWeight: '800', color: '#2563eb' }}>Map</Text>
-                            </TouchableOpacity>
-                          )}
-
-                          <TouchableOpacity
-                            onPress={() => handleStatusToggle(h._id, h.availabilityStatus)}
-                            style={styles.toggleStatusBtn}
-                          >
-                            <Text style={styles.toggleStatusBtnText}>
-                              {isAvail ? 'Mark Booked' : 'Mark Available'}
-                            </Text>
-                          </TouchableOpacity>
+                        <View style={styles.photosCountBadge}>
+                          <Ionicons name="images" size={12} color="#fff" />
+                          <Text style={styles.photosCountBadgeText}>{h.photos?.length || 1} Photos</Text>
                         </View>
                       </View>
+                    </View>
+
+                    {/* Card Body Information */}
+                    <View style={styles.inventoryCardBody}>
+                      <Text style={styles.inventoryTitle} numberOfLines={1}>{h.title}</Text>
+
+                      <View style={styles.inventoryAddressRow}>
+                        <Ionicons name="navigate-circle-outline" size={14} color="#64748b" />
+                        <Text style={styles.inventoryAddress} numberOfLines={1}>{h.location?.address}</Text>
+                      </View>
+
+                      {/* Technical Specs Tags */}
+                      <View style={styles.inventorySpecsRow}>
+                        {h.dimensions?.width && h.dimensions?.height ? (
+                          <View style={styles.specTag}>
+                            <Ionicons name="scan-outline" size={12} color="#475569" />
+                            <Text style={styles.specTagText}>
+                              {h.dimensions.width} × {h.dimensions.height} {h.dimensions.unit || 'ft'}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {h.lightingType ? (
+                          <View style={styles.specTag}>
+                            <Ionicons name="bulb-outline" size={12} color="#475569" />
+                            <Text style={styles.specTagText}>{h.lightingType}</Text>
+                          </View>
+                        ) : null}
+                        {h.pricing?.baseRatePerDay ? (
+                          <View style={styles.specTag}>
+                            <Text style={styles.specTagText}>₹{h.pricing.baseRatePerDay.toLocaleString('en-IN')}/day</Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      {/* Rate Row */}
+                      <View style={styles.inventoryRateContainer}>
+                        <View>
+                          <Text style={styles.inventoryRateLabel}>MONTHLY TARIFF</Text>
+                          <Text style={styles.inventoryPrice}>
+                            ₹{(h.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}
+                            <Text style={styles.inventoryPriceSub}> / mo</Text>
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.inventoryInventoryNum}>
+                            ID: #{h._id.slice(-6).toUpperCase()}
+                          </Text>
+                          <Text style={[styles.inventoryStatusHint, isAvail ? { color: '#166534' } : { color: '#4338ca' }]}>
+                            {isAvail ? '● Ready for Campaign' : '● Contracted'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Dedicated Full-Width Action Bar */}
+                    <View style={styles.inventoryActionBar}>
+                      {/* Button 1: Photos / Gallery */}
+                      <TouchableOpacity
+                        onPress={() => setPhotoManagerHoarding(h)}
+                        style={styles.actionBtnPhotos}
+                      >
+                        <Ionicons name="images" size={15} color="#4338ca" />
+                        <Text style={styles.actionBtnPhotosText}>
+                          Photos ({h.photos?.length || 0})
+                        </Text>
+                        {h.coverPhotoDeletionRequest?.status === 'pending' && (
+                          <View style={styles.pendingDot} />
+                        )}
+                      </TouchableOpacity>
+
+                      {/* Button 2: Map Link (if available) */}
+                      {hasMaps && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            const url = h.location?.googleMapsUrl ||
+                              `https://www.google.com/maps?q=${h.location?.geo?.coordinates[1]},${h.location?.geo?.coordinates[0]}`;
+                            Linking.openURL(url);
+                          }}
+                          style={styles.actionBtnMap}
+                        >
+                          <Ionicons name="map-outline" size={15} color="#2563eb" />
+                          <Text style={styles.actionBtnMapText}>Map</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* Button 3: Toggle Availability Status */}
+                      <TouchableOpacity
+                        onPress={() => handleStatusToggle(h._id, h.availabilityStatus)}
+                        style={[styles.actionBtnToggle, isAvail ? styles.actionBtnToggleBooked : styles.actionBtnToggleAvail]}
+                      >
+                        <Ionicons
+                          name={isAvail ? 'lock-closed-outline' : 'checkmark-circle-outline'}
+                          size={15}
+                          color={isAvail ? '#b45309' : '#166534'}
+                        />
+                        <Text style={[styles.actionBtnToggleText, isAvail ? { color: '#b45309' } : { color: '#166534' }]}>
+                          {isAvail ? 'Mark Booked' : 'Mark Available'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -2330,81 +2406,286 @@ const styles = StyleSheet.create({
   },
   inventoryCard: {
     backgroundColor: '#fff',
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     overflow: 'hidden',
-    marginBottom: 10,
-    flexDirection: 'row',
+    marginBottom: 16,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  inventoryCardImg: {
-    width: 90,
-    height: '100%',
+  inventoryCardImgContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 165,
     backgroundColor: '#f1f5f9',
   },
-  inventoryCardBody: {
-    flex: 1,
-    padding: 10,
+  inventoryCardBannerImg: {
+    width: '100%',
+    height: '100%',
   },
-  inventoryCity: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#2563eb',
-    textTransform: 'uppercase',
-  },
-  statusPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  pillAvail: { backgroundColor: '#dcfce7' },
-  pillAvailText: { color: '#166534', fontSize: 9, fontWeight: '900' },
-  pillBooked: { backgroundColor: '#e0e7ff' },
-  pillBookedText: { color: '#3730a3', fontSize: 9, fontWeight: '900' },
-  inventoryTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginTop: 2,
-  },
-  inventoryAddress: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 1,
-  },
-  inventoryPriceRow: {
+  cardTopOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 6,
+  },
+  cardLocationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  cardLocationChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  cardTypeChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  cardTypeChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  statusPillLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  pillAvailLarge: {
+    backgroundColor: 'rgba(240, 253, 244, 0.95)',
+    borderColor: '#bbf7d0',
+  },
+  pillBookedLarge: {
+    backgroundColor: 'rgba(238, 242, 255, 0.95)',
+    borderColor: '#c7d2fe',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusDotAvail: {
+    backgroundColor: '#16a34a',
+  },
+  statusDotBooked: {
+    backgroundColor: '#4f46e5',
+  },
+  statusPillTextLarge: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  pillAvailTextLarge: {
+    color: '#166534',
+  },
+  pillBookedTextLarge: {
+    color: '#3730a3',
+  },
+  cardBottomOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pendingCoverBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(254, 243, 199, 0.95)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  pendingCoverBannerText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#92400e',
+  },
+  photosCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  photosCountBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  inventoryCardBody: {
+    padding: 14,
+  },
+  inventoryTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0f172a',
+    lineHeight: 22,
+  },
+  inventoryAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+  },
+  inventoryAddress: {
+    fontSize: 12,
+    color: '#64748b',
+    flex: 1,
+  },
+  inventorySpecsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 10,
+  },
+  specTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  specTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  inventoryRateContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginTop: 12,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
   },
+  inventoryRateLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#94a3b8',
+    letterSpacing: 0.5,
+  },
   inventoryPrice: {
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: '900',
     color: '#0f172a',
   },
-  cardMapsIconBtn: {
+  inventoryPriceSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  inventoryInventoryNum: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94a3b8',
+    fontFamily: 'monospace',
+  },
+  inventoryStatusHint: {
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  inventoryActionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 8,
+    padding: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8fafc',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  actionBtnPhotos: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#eef2ff',
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  actionBtnPhotosText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#4338ca',
+  },
+  actionBtnMap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
     backgroundColor: '#eff6ff',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
   },
-  toggleStatusBtn: {
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+  actionBtnMapText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#2563eb',
   },
-  toggleStatusBtnText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#475569',
+  actionBtnToggle: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  actionBtnToggleBooked: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#fde68a',
+  },
+  actionBtnToggleAvail: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
+  },
+  actionBtnToggleText: {
+    fontSize: 12,
+    fontWeight: '900',
   },
   emptyCheques: {
     backgroundColor: '#fff',
