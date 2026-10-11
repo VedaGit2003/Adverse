@@ -290,6 +290,28 @@ export default function SellerDashboardPage() {
     }
   };
 
+  // Add Photo from Manual URL
+  const handleAddPhotoUrl = async () => {
+    if (!manualPhotoUrl.trim()) {
+      showToast('Please enter an image URL.', 'error');
+      return;
+    }
+    const url = manualPhotoUrl.trim();
+    const updatedPhotos = [...(photoManagerModal.photos || []), url];
+    setPhotoManagerModal((prev) => ({ ...prev, photos: updatedPhotos }));
+    setManualPhotoUrl('');
+    try {
+      await api.put(`/hoardings/${photoManagerModal._id}`, { photos: updatedPhotos });
+      setHoardings((prev) =>
+        prev.map((h) => (h._id === photoManagerModal._id ? { ...h, photos: updatedPhotos } : h))
+      );
+      showToast('Photo added to gallery!');
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to add photo.', 'error');
+    }
+  };
+
   // Upload Photo(s) for New Hoarding Enlistment
   const handleNewHoardingFileUpload = async (e) => {
     const files = e.target.files;
