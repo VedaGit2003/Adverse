@@ -473,18 +473,32 @@ export default function SellerDashboardScreen({ navigation }) {
   const handleStatusToggle = async (hoardingId, currentStatus) => {
     const nextStatus = currentStatus === 'available' ? 'occupied' : 'available';
     try {
-      await mobileApi.put(`/hoardings/${hoardingId}/status`, { status: nextStatus });
-      setHoardings(prev =>
-        prev.map(h => (h._id === hoardingId ? { ...h, availabilityStatus: nextStatus } : h))
-      );
-      Alert.alert('Status Updated', `Hoarding is now marked as ${nextStatus.toUpperCase()}`);
+      const res = await mobileApi.put(`/hoardings/${hoardingId}/status`, { status: nextStatus });
+      if (res.data?.requiresApproval) {
+        Alert.alert('Admin Approval Required 🛡️', res.data.message);
+      } else {
+        setHoardings(prev =>
+          prev.map(h => (h._id === hoardingId ? { ...h, availabilityStatus: nextStatus } : h))
+        );
+        Alert.alert('Status Updated', `Hoarding is now marked as ${nextStatus.toUpperCase()}`);
+      }
+      fetchSellerData();
     } catch (err) {
-      Alert.alert('Error', 'Failed to change status.');
+      Alert.alert('Error', err.response?.data?.message || 'Failed to change status.');
     }
   };
 
   // Open Edit Billboard & Price Modal (like web client)
   const handleOpenEditModal = (hoarding) => {
+    // Check if hoarding is locked (under active bookings, 3-day mounting window, or marked occupied)
+    const isUnderBooking = (bookings || []).some(
+      b =>
+        (b.hoardingId?._id === hoarding._id || b.hoardingId === hoarding._id) &&
+        ['requested', 'approved', 'confirmed', 'mounting_window', 'verification_pending', 'active'].includes(b.bookingStatus)
+    );
+    const isBooked = hoarding.availabilityStatus === 'occupied';
+    const isLockedForApproval = isBooked || isUnderBooking;
+
     setEditHoardingModal({
       _id: hoarding._id,
       title: hoarding.title || '',
@@ -503,7 +517,9 @@ export default function SellerDashboardScreen({ navigation }) {
         ''
       ),
       minimumBookingDays: String(hoarding.pricing?.minimumBookingDays || '15'),
-      availabilityStatus: hoarding.availabilityStatus || 'available'
+      availabilityStatus: hoarding.availabilityStatus || 'available',
+      isLockedForApproval,
+      hasPendingApproval: hoarding.modificationRequest?.status === 'pending'
     });
   };
 
@@ -543,7 +559,14 @@ export default function SellerDashboardScreen({ navigation }) {
 
       const res = await mobileApi.put(`/hoardings/${editHoardingModal._id}`, payload);
       if (res.data?.success) {
-        Alert.alert('Billboard Updated! 🏷️', 'Billboard pricing and specifications updated successfully.');
+        if (res.data.requiresApproval) {
+          Alert.alert(
+            'Submitted to Admin for Approval 🛡️',
+            res.data.message || 'This billboard is currently booked or in an active campaign. Your price/specs update has been sent to Super Admin for approval.'
+          );
+        } else {
+          Alert.alert('Billboard Updated! 🏷️', 'Billboard pricing and specifications updated successfully.');
+        }
         setEditHoardingModal(null);
         fetchSellerData();
       }
@@ -1279,12 +1302,23 @@ export default function SellerDashboardScreen({ navigation }) {
 
                       {/* Bottom Overlay Chips (on image) */}
                       <View style={styles.cardBottomOverlay}>
-                        {h.coverPhotoDeletionRequest?.status === 'pending' ? (
-                          <View style={styles.pendingCoverBanner}>
-                            <Ionicons name="time" size={12} color="#b45309" />
-                            <Text style={styles.pendingCoverBannerText}>Cover Deletion Pending Admin</Text>
-                          </View>
-                        ) : <View />}
+                        <View style={{ flexDirection: 'column', gap: 4, flex: 1, marginRight: 8 }}>
+                          {h.coverPhotoDeletionRequest?.status === 'pending' ? (
+                            <View style={styles.pendingCoverBanner}>
+                              <Ionicons name="time" size={12} color="#b45309" />
+                              <Text style={styles.pendingCoverBannerText}>Cover Deletion Pending Admin</Text>
+                            </View>
+                          ) : null}
+
+                          {h.modificationRequest?.status === 'pending' ? (
+                            <View style={styles.pendingModificationBanner}>
+                              <Ionicons name="hourglass" size={11} color="#4338ca" />
+                              <Text style={styles.pendingModificationBannerText} numberOfLines={1}>
+                                Price/Specs Pending Admin: ₹{Number(h.modificationRequest.requestedUpdates?.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
 
                         <View style={styles.photosCountBadge}>
                           <Ionicons name="images" size={12} color="#fff" />
@@ -1342,6 +1376,14 @@ export default function SellerDashboardScreen({ navigation }) {
                               <Text style={styles.editPricePillText}>Edit Price</Text>
                             </TouchableOpacity>
                           </View>
+                          {h.modificationRequest?.status === 'pending' && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                              <Ionicons name="time-outline" size={11} color="#b45309" />
+                              <Text style={{ fontSize: 10, color: '#b45309', fontWeight: '800' }}>
+                                Req: ₹{Number(h.modificationRequest.requestedUpdates?.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo (Pending Approval)
+                              </Text>
+                            </View>
+                          )}
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
                           <Text style={styles.inventoryInventoryNum}>
@@ -2253,6 +2295,21 @@ export default function SellerDashboardScreen({ navigation }) {
               </View>
 
               <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+                {/* Admin Approval Requirement Callout */}
+                {editHoardingModal.isLockedForApproval && (
+                  <View style={styles.modalLockCallout}>
+                    <View style={styles.modalLockIconWrap}>
+                      <Ionicons name="shield-checkmark" size={16} color="#b45309" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalLockTitle}>Admin Approval Required</Text>
+                      <Text style={styles.modalLockSub}>
+                        This billboard is currently booked or in an active campaign / mounting window. Any changes saved will be submitted to Super Admin for approval before updating live.
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
                 {/* PRIORITY SECTION: TARIFF & PRICING */}
                 <View style={styles.editPriceHighlightCard}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -2463,7 +2520,9 @@ export default function SellerDashboardScreen({ navigation }) {
                     {savingEditHoarding ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.submitModalBtnText}>Save Price & Specs</Text>
+                      <Text style={styles.submitModalBtnText}>
+                        {editHoardingModal.isLockedForApproval ? 'Submit for Admin Approval' : 'Save Price & Specs'}
+                      </Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -4162,5 +4221,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#64748b',
+  },
+  pendingModificationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(238, 242, 255, 0.95)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  pendingModificationBannerText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#4338ca',
+  },
+  modalLockCallout: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#fffbeb',
+    borderWidth: 1.5,
+    borderColor: '#fde68a',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  modalLockIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  modalLockTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#92400e',
+  },
+  modalLockSub: {
+    fontSize: 11,
+    color: '#b45309',
+    lineHeight: 16,
+    marginTop: 2,
   },
 });

@@ -429,3 +429,125 @@ exports.moderateCoverDeletionRequest = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Get all pending hoarding modification requests (price, specs, status)
+ * @route   GET /api/admin/modification-requests
+ * @access  Private (Admin only)
+ */
+exports.getModificationRequests = async (req, res, next) => {
+  try {
+    const hoardings = await Hoarding.find({
+      'modificationRequest.status': 'pending'
+    })
+      .populate('sellerId', 'name email phone companyDetails')
+      .populate('modificationRequest.requestedBy', 'name email phone')
+      .sort({ 'modificationRequest.requestedAt': -1 });
+
+    res.status(200).json({
+      success: true,
+      count: hoardings.length,
+      requests: hoardings
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Approve or reject a hoarding modification request
+ * @route   PUT /api/admin/modification-requests/:id
+ * @access  Private (Admin only)
+ */
+exports.moderateModificationRequest = async (req, res, next) => {
+  try {
+    const { action, adminNotes } = req.body; // 'approve' | 'reject'
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Action must be "approve" or "reject".'
+      });
+    }
+
+    const hoarding = await Hoarding.findById(req.params.id)
+      .populate('sellerId', 'name email phone companyDetails');
+
+    if (!hoarding) {
+      return res.status(404).json({ success: false, message: 'Hoarding not found.' });
+    }
+
+    if (hoarding.modificationRequest?.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending modification request found for this hoarding.'
+      });
+    }
+
+    if (action === 'approve') {
+      const updates = hoarding.modificationRequest.requestedUpdates || {};
+
+      // Apply requested pricing updates
+      if (updates.pricing) {
+        hoarding.pricing = {
+          ...(hoarding.pricing?.toObject?.() || hoarding.pricing || {}),
+          ...updates.pricing
+        };
+        if (hoarding.pricing.baseRatePerMonth && !hoarding.pricing.baseRatePerDay) {
+          hoarding.pricing.baseRatePerDay = Math.round(Number(hoarding.pricing.baseRatePerMonth) / 30);
+        }
+      }
+
+      // Apply dimensions
+      if (updates.dimensions) {
+        hoarding.dimensions = {
+          ...(hoarding.dimensions?.toObject?.() || hoarding.dimensions || {}),
+          ...updates.dimensions
+        };
+      }
+
+      // Apply location
+      if (updates.location) {
+        hoarding.location = {
+          ...(hoarding.location?.toObject?.() || hoarding.location || {}),
+          ...updates.location
+        };
+      }
+
+      if (updates.title) hoarding.title = updates.title;
+      if (updates.description) hoarding.description = updates.description;
+      if (updates.hoardingType) hoarding.hoardingType = updates.hoardingType;
+      if (updates.lightingType) hoarding.lightingType = updates.lightingType;
+      if (updates.availabilityStatus) hoarding.availabilityStatus = updates.availabilityStatus;
+      if (updates.photos && Array.isArray(updates.photos)) hoarding.photos = updates.photos;
+
+      hoarding.modificationRequest.status = 'approved';
+      hoarding.modificationRequest.reviewedAt = new Date();
+      hoarding.modificationRequest.reviewedBy = req.user.id;
+      hoarding.modificationRequest.adminNotes = adminNotes || 'Approved by Super Admin.';
+
+      await hoarding.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Hoarding modifications approved and applied successfully.',
+        hoarding
+      });
+    } else {
+      // Reject
+      hoarding.modificationRequest.status = 'rejected';
+      hoarding.modificationRequest.reviewedAt = new Date();
+      hoarding.modificationRequest.reviewedBy = req.user.id;
+      hoarding.modificationRequest.adminNotes = adminNotes || 'Rejected by Super Admin.';
+
+      await hoarding.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Hoarding modification request rejected. Existing details kept intact.',
+        hoarding
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};

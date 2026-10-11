@@ -45,6 +45,9 @@ export default function AdminDashboardPage() {
   const [coverDeletionRequests, setCoverDeletionRequests] = useState([]);
   const [moderatingRequestId, setModeratingRequestId] = useState(null);
 
+  // Hoarding price & specs modification requests
+  const [modificationRequests, setModificationRequests] = useState([]);
+
   // Hoardings tab state
   const [hoardings, setHoardings] = useState([]);
   const [hoardingSearch, setHoardingSearch] = useState('');
@@ -147,13 +150,14 @@ export default function AdminDashboardPage() {
     else setRefreshing(true);
 
     try {
-      const [metricsRes, hoardingsRes, bookingsRes, usersRes, sellersRes, coverReqsRes] = await Promise.all([
+      const [metricsRes, hoardingsRes, bookingsRes, usersRes, sellersRes, coverReqsRes, modReqsRes] = await Promise.all([
         api.get('/admin/metrics'),
         api.get('/admin/hoardings'),
         api.get('/admin/bookings'),
         api.get('/admin/users'),
         api.get('/admin/sellers'),
-        api.get('/admin/cover-deletion-requests').catch(() => ({ data: { requests: [] } }))
+        api.get('/admin/cover-deletion-requests').catch(() => ({ data: { requests: [] } })),
+        api.get('/admin/modification-requests').catch(() => ({ data: { requests: [] } }))
       ]);
 
       setMetrics(metricsRes.data.metrics);
@@ -162,6 +166,7 @@ export default function AdminDashboardPage() {
       setUsers(usersRes.data.users || []);
       setSellers(sellersRes.data.sellers || []);
       setCoverDeletionRequests(coverReqsRes.data.requests || []);
+      setModificationRequests(modReqsRes.data.requests || []);
     } catch (err) {
       console.error('Error fetching admin dashboard data:', err);
       showToast('Failed to load updated platform data', 'error');
@@ -194,6 +199,31 @@ export default function AdminDashboardPage() {
     } catch (err) {
       console.error(err);
       showToast(err.response?.data?.message || 'Failed to process cover deletion request.', 'error');
+    } finally {
+      setModeratingRequestId(null);
+    }
+  };
+
+  // Handle Hoarding Price & Specs Modification Moderation (Approve/Reject)
+  const handleModerateModification = async (hoardingId, action) => {
+    setModeratingRequestId(hoardingId);
+    try {
+      const res = await api.put(`/admin/modification-requests/${hoardingId}`, {
+        action,
+        adminNotes: action === 'approve' ? 'Approved by Super Admin' : 'Rejected by Super Admin'
+      });
+      if (res.data.success) {
+        showToast(
+          action === 'approve'
+            ? 'Hoarding price & specifications approved and updated!'
+            : 'Hoarding modification request rejected.',
+          'success'
+        );
+        fetchAllData(true);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to process modification request.', 'error');
     } finally {
       setModeratingRequestId(null);
     }
@@ -576,6 +606,27 @@ export default function AdminDashboardPage() {
             {coverDeletionRequests.length > 0 ? (
               <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-black bg-rose-500 text-white animate-pulse">
                 {coverDeletionRequests.length}
+              </span>
+            ) : (
+              <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500">
+                0
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('modification-requests')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition ${
+              activeTab === 'modification-requests'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Edit3 className="w-4 h-4 text-indigo-600" />
+            <span>Price & Spec Requests</span>
+            {modificationRequests.length > 0 ? (
+              <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-black bg-indigo-600 text-white animate-pulse">
+                {modificationRequests.length}
               </span>
             ) : (
               <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500">
@@ -1594,6 +1645,199 @@ export default function AdminDashboardPage() {
                             <Trash2 className="w-3.5 h-3.5" />
                           )}
                           <span>Approve & Delete from Cloudinary</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 6: HOARDING PRICE & SPECIFICATION MODIFICATION REQUESTS */}
+        {/* ============================================================== */}
+        {activeTab === 'modification-requests' && (
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-indigo-100 text-indigo-900">
+                    Tariff & Specs Moderation
+                  </span>
+                  <span className="text-xs font-semibold text-slate-400">• Active Booking Guard</span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 mt-1">
+                  Pending Price & Specification Change Requests ({modificationRequests.length})
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Media owners cannot change prices or specs directly when a hoarding is booked, in a 3-day mounting window, or has active campaigns. Review requested updates below.
+                </p>
+              </div>
+              <button
+                onClick={() => fetchAllData(true)}
+                disabled={refreshing}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {modificationRequests.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+                <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-indigo-600">
+                  <ShieldCheck className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-black text-slate-900">No Pending Modification Requests</h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                  All media owner rate changes on available hoardings apply automatically. There are no price or specification changes waiting for approval.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {modificationRequests.map((h) => {
+                  const req = h.modificationRequest || {};
+                  const updates = req.requestedUpdates || {};
+                  const newPricing = updates.pricing || {};
+                  const oldPricing = h.pricing || {};
+                  const newDims = updates.dimensions || {};
+                  const oldDims = h.dimensions || {};
+
+                  return (
+                    <div
+                      key={h._id}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 hover:border-slate-300 transition"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="relative w-28 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shrink-0 shadow-2xs">
+                          <img
+                            src={h.photos?.[0] || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=400&q=80'}
+                            alt={h.title}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-indigo-600 text-white shadow-xs">
+                            ID: #{h._id.slice(-6).toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800">
+                              🔒 {req.lockReason || 'Under Active Booking'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {h.location?.city}
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-black text-slate-900 truncate mt-1">
+                            {updates.title && updates.title !== h.title ? (
+                              <span>
+                                {h.title} → <span className="text-indigo-600">{updates.title}</span>
+                              </span>
+                            ) : (
+                              h.title
+                            )}
+                          </h4>
+                          <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
+                            {h.location?.address}
+                          </p>
+
+                          <div className="mt-2 text-[11px] text-slate-600 flex items-center gap-1">
+                            <span className="font-bold">Seller:</span>
+                            <span className="text-indigo-600 font-semibold truncate">
+                              {h.sellerId?.companyDetails?.companyName || h.sellerId?.name || 'Media Owner'}
+                            </span>
+                            {h.sellerId?.phone && (
+                              <span className="text-slate-400 font-mono">({h.sellerId.phone})</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Before vs After Comparison Grid */}
+                      <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5 text-xs">
+                        <span className="font-black text-slate-700 block text-[11px] uppercase tracking-wider">
+                          Requested Changes Comparison
+                        </span>
+
+                        {/* Monthly Rate Comparison */}
+                        <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-100">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Monthly Tariff</span>
+                            <span className="font-bold text-slate-700 line-through text-xs">
+                              ₹{(oldPricing.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] uppercase font-bold text-indigo-500 block">Proposed Rate</span>
+                            <span className="font-black text-indigo-600 text-sm">
+                              ₹{(newPricing.baseRatePerMonth || oldPricing.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Dimensions & Lighting if changed */}
+                        {(newDims.width || newDims.height || updates.lightingType || updates.hoardingType) && (
+                          <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-100 text-[11px]">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">Current Specs</span>
+                              <span className="font-semibold text-slate-600">
+                                {oldDims.width}×{oldDims.height} ft • {h.lightingType} • {h.hoardingType}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] uppercase font-bold text-indigo-500 block">Proposed Specs</span>
+                              <span className="font-bold text-indigo-700">
+                                {newDims.width || oldDims.width}×{newDims.height || oldDims.height} ft • {updates.lightingType || h.lightingType} • {updates.hoardingType || h.hoardingType}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Reason and Timestamp */}
+                        {req.reason ? (
+                          <div className="pt-1 text-[11px] text-slate-500 italic">
+                            Reason: "{req.reason}"
+                          </div>
+                        ) : null}
+
+                        {req.requestedAt && (
+                          <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>Submitted: {new Date(req.requestedAt).toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => handleModerateModification(h._id, 'reject')}
+                          disabled={moderatingRequestId === h._id}
+                          className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Reject</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Approve price & specs changes for "${h.title}"? This will update the live listing immediately.`)) {
+                              handleModerateModification(h._id, 'approve');
+                            }
+                          }}
+                          disabled={moderatingRequestId === h._id}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5"
+                        >
+                          {moderatingRequestId === h._id ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5" />
+                          )}
+                          <span>Approve & Apply</span>
                         </button>
                       </div>
                     </div>

@@ -80,6 +80,25 @@ const HoardingSchema = new mongoose.Schema(
       reviewedAt: { type: Date },
       adminNotes: { type: String, default: '' }
     },
+    modificationRequest: {
+      status: {
+        type: String,
+        enum: ['none', 'pending', 'approved', 'rejected'],
+        default: 'none',
+        index: true
+      },
+      requestedUpdates: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
+      },
+      reason: { type: String, default: '' },
+      lockReason: { type: String, default: '' },
+      requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      requestedAt: { type: Date },
+      reviewedAt: { type: Date },
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      adminNotes: { type: String, default: '' }
+    },
     availabilityStatus: {
       type: String,
       enum: ['available', 'occupied', 'under_maintenance', 'inactive'],

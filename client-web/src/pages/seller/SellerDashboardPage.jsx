@@ -139,10 +139,15 @@ export default function SellerDashboardPage() {
     try {
       const res = await api.put(`/hoardings/${hoardingId}/status`, { status: newStatus });
       if (res.data.success) {
-        setHoardings((prev) =>
-          prev.map((h) => (h._id === hoardingId ? { ...h, availabilityStatus: newStatus } : h))
-        );
-        showToast(`Hoarding status updated to: ${newStatus.replace('_', ' ')}`);
+        if (res.data.requiresApproval) {
+          showToast(res.data.message || 'Status change submitted for Super Admin approval.', 'info');
+          fetchData(true);
+        } else {
+          setHoardings((prev) =>
+            prev.map((h) => (h._id === hoardingId ? { ...h, availabilityStatus: newStatus } : h))
+          );
+          showToast(`Hoarding status updated to: ${newStatus.replace('_', ' ')}`);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -166,6 +171,16 @@ export default function SellerDashboardPage() {
   // Open Edit Modal
   const openEditModal = (hoarding) => {
     setFormError('');
+
+    // Check if hoarding is currently locked (under booking, mounting period, or marked occupied)
+    const isUnderBooking = (bookings || []).some(
+      (b) =>
+        (b.hoardingId?._id === hoarding._id || b.hoardingId === hoarding._id) &&
+        ['requested', 'approved', 'confirmed', 'mounting_window', 'verification_pending', 'active'].includes(b.bookingStatus)
+    );
+    const isBooked = hoarding.availabilityStatus === 'occupied';
+    const isLocked = isBooked || isUnderBooking;
+
     setEditHoardingModal({
       _id: hoarding._id,
       title: hoarding.title || '',
@@ -191,7 +206,10 @@ export default function SellerDashboardPage() {
         printingCostEstimate: hoarding.pricing?.printingCostEstimate || 0,
         mountingCostEstimate: hoarding.pricing?.mountingCostEstimate || 0
       },
-      availabilityStatus: hoarding.availabilityStatus || 'available'
+      availabilityStatus: hoarding.availabilityStatus || 'available',
+      isLocked,
+      hasPendingApproval: hoarding.modificationRequest?.status === 'pending',
+      pendingRequest: hoarding.modificationRequest
     });
   };
 
@@ -231,7 +249,11 @@ export default function SellerDashboardPage() {
 
       const res = await api.put(`/hoardings/${editHoardingModal._id}`, payload);
       if (res.data.success) {
-        showToast('Hoarding details & pricing updated successfully!');
+        if (res.data.requiresApproval) {
+          showToast(res.data.message || 'Changes submitted to Super Admin for approval.', 'info');
+        } else {
+          showToast('Hoarding details & pricing updated successfully!');
+        }
         setEditHoardingModal(null);
         fetchData(true);
       }
@@ -1148,6 +1170,21 @@ export default function SellerDashboardPage() {
                         </span>
                       </div>
 
+                      {/* Pending Admin Modification Banner */}
+                      {h.modificationRequest?.status === 'pending' && (
+                        <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
+                          <div className="flex items-center gap-1.5 font-bold">
+                            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>Price / Specs Update Pending Admin</span>
+                          </div>
+                          {h.modificationRequest?.requestedUpdates?.pricing?.baseRatePerMonth ? (
+                            <span className="font-black bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[11px]">
+                              Req: ₹{Number(h.modificationRequest.requestedUpdates.pricing.baseRatePerMonth).toLocaleString('en-IN')}/mo
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+
                       {/* Pricing Highlight */}
                       <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                         <div>
@@ -1598,6 +1635,16 @@ export default function SellerDashboardPage() {
               Update structure specifications, physical address, monthly/daily rates, or set site offline/booked.
             </p>
 
+            {editHoardingModal.isLocked && (
+              <div className="mb-4 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-xs text-amber-900">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-extrabold block">Admin Approval Required</span>
+                  <span>This billboard is currently booked or in an active campaign/mounting period. Any price or specification changes you submit will be reviewed and approved by Super Admin before updating live.</span>
+                </div>
+              </div>
+            )}
+
             {formError && (
               <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1910,7 +1957,7 @@ export default function SellerDashboardPage() {
                   className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition flex items-center gap-1.5"
                 >
                   {formLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  <span>Save Board & Price Changes</span>
+                  <span>{editHoardingModal.isLocked ? 'Submit Changes for Admin Approval' : 'Save Board & Price Changes'}</span>
                 </button>
               </div>
             </form>

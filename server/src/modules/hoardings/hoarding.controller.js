@@ -1,5 +1,6 @@
 const Hoarding = require('../../models/Hoarding');
 const Booking = require('../../models/Booking');
+const Payment = require('../../models/Payment');
 const { resolveWBCoordinates, calculateDistanceKm, WB_CITIES } = require('../../utils/geo');
 const { deleteFromCloudinary } = require('../../utils/cloudinary');
 
@@ -224,6 +225,72 @@ exports.createHoarding = async (req, res, next) => {
   }
 };
 
+/**
+ * Checks if a hoarding is locked under booking, 3-day mounting window, payment initiated, or booked/occupied.
+ * Returns { requiresApproval: boolean, lockReason: string }
+ */
+async function checkHoardingRequiresApproval(hoarding) {
+  // 1. Explicitly occupied/booked
+  if (hoarding.availabilityStatus === 'occupied') {
+    return {
+      requiresApproval: true,
+      lockReason: 'booked / occupied'
+    };
+  }
+
+  // 2. Any active or in-progress bookings on this hoarding
+  const activeBookings = await Booking.find({
+    hoardingId: hoarding._id,
+    bookingStatus: {
+      $in: [
+        'requested',
+        'approved',
+        'confirmed',
+        'mounting_window',
+        'verification_pending',
+        'active'
+      ]
+    }
+  });
+
+  if (activeBookings && activeBookings.length > 0) {
+    const hasMounting = activeBookings.some(b => b.bookingStatus === 'mounting_window');
+    const hasVerification = activeBookings.some(b => b.bookingStatus === 'verification_pending');
+    const hasActive = activeBookings.some(b => b.bookingStatus === 'active');
+    const hasConfirmed = activeBookings.some(b => b.bookingStatus === 'confirmed');
+
+    if (hasMounting) {
+      return { requiresApproval: true, lockReason: 'in 3-day mounting period' };
+    }
+    if (hasVerification) {
+      return { requiresApproval: true, lockReason: 'under customer mounting verification' };
+    }
+    if (hasActive) {
+      return { requiresApproval: true, lockReason: 'under an active campaign' };
+    }
+    if (hasConfirmed) {
+      return { requiresApproval: true, lockReason: 'under a confirmed booking' };
+    }
+    return { requiresApproval: true, lockReason: 'under booking reservation process' };
+  }
+
+  // 3. Any initiated payments for this hoarding
+  const allBookings = await Booking.find({ hoardingId: hoarding._id }).select('_id');
+  if (allBookings.length > 0) {
+    const bookingIds = allBookings.map(b => b._id);
+    const initiatedPayment = await Payment.findOne({
+      bookingId: { $in: bookingIds },
+      paymentStatus: { $in: ['pending', 'paid', 'verified'] }
+    });
+    if (initiatedPayment) {
+      return { requiresApproval: true, lockReason: `payment initiated (${initiatedPayment.paymentStatus})` };
+    }
+  }
+
+  // Hoarding is free and available
+  return { requiresApproval: false, lockReason: '' };
+}
+
 exports.updateHoarding = async (req, res, next) => {
   try {
     let hoarding = await Hoarding.findById(req.params.id);
@@ -275,8 +342,49 @@ exports.updateHoarding = async (req, res, next) => {
       };
     }
 
-    hoarding = await Hoarding.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
-    res.status(200).json({ success: true, message: 'Hoarding updated successfully.', hoarding });
+    // CHECK ADMIN APPROVAL REQUIREMENT:
+    // If not admin, check if hoarding is under booking, 3-day mounting, payment initiated, or booked
+    if (req.user.role !== 'admin') {
+      const { requiresApproval, lockReason } = await checkHoardingRequiresApproval(hoarding);
+
+      if (requiresApproval) {
+        // Save as pending modification request for Super Admin approval
+        hoarding.modificationRequest = {
+          status: 'pending',
+          requestedUpdates: updates,
+          reason: req.body.reason || `Price / Specs update requested while hoarding is ${lockReason}.`,
+          lockReason,
+          requestedBy: req.user.id,
+          requestedAt: new Date(),
+          adminNotes: ''
+        };
+        await hoarding.save();
+
+        return res.status(200).json({
+          success: true,
+          requiresApproval: true,
+          message: `This billboard is currently ${lockReason}. Your requested price and specification changes have been submitted to Super Admin for approval.`,
+          hoarding
+        });
+      }
+    }
+
+    // Direct update: hoarding is available with no active contracts/payments
+    hoarding = await Hoarding.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...updates,
+        'modificationRequest.status': 'none'
+      },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      requiresApproval: false,
+      message: 'Hoarding updated successfully.',
+      hoarding
+    });
   } catch (error) {
     next(error);
   }
@@ -300,11 +408,37 @@ exports.updateHoardingStatus = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Not authorized.' });
     }
 
+    // If seller attempts to change status while under active booking / mounting / payment
+    if (req.user.role !== 'admin') {
+      const { requiresApproval, lockReason } = await checkHoardingRequiresApproval(hoarding);
+
+      if (requiresApproval && status === 'available') {
+        hoarding.modificationRequest = {
+          status: 'pending',
+          requestedUpdates: { availabilityStatus: status },
+          reason: `Status release to AVAILABLE requested while hoarding is ${lockReason}.`,
+          lockReason,
+          requestedBy: req.user.id,
+          requestedAt: new Date(),
+          adminNotes: ''
+        };
+        await hoarding.save();
+
+        return res.status(200).json({
+          success: true,
+          requiresApproval: true,
+          message: `This billboard is currently ${lockReason}. Releasing status to available requires Super Admin approval.`,
+          hoarding
+        });
+      }
+    }
+
     hoarding.availabilityStatus = status;
     await hoarding.save();
 
     res.status(200).json({
       success: true,
+      requiresApproval: false,
       message: `Hoarding status updated to ${status}.`,
       hoarding
     });

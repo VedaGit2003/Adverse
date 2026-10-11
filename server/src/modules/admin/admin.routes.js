@@ -9,7 +9,9 @@ const {
   moderateHoarding,
   moderateSellerStatus,
   getCoverDeletionRequests,
-  moderateCoverDeletionRequest
+  moderateCoverDeletionRequest,
+  getModificationRequests,
+  moderateModificationRequest
 } = require('./admin.controller');
 const { verifyToken, authorizeRoles } = require('../../middlewares/auth.middleware');
 
@@ -25,5 +27,7 @@ router.put('/hoardings/:id/approve', moderateHoarding);
 router.put('/sellers/:id/status', moderateSellerStatus);
 router.get('/cover-deletion-requests', getCoverDeletionRequests);
 router.put('/cover-deletion-requests/:id', moderateCoverDeletionRequest);
+router.get('/modification-requests', getModificationRequests);
+router.put('/modification-requests/:id', moderateModificationRequest);
 
 module.exports = router;
