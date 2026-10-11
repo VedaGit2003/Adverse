@@ -30,7 +30,8 @@ import {
   Edit3,
   ChevronDown,
   ChevronUp,
-  Trash2
+  Trash2,
+  Check
 } from 'lucide-react';
 import HoardingMap from '../../components/HoardingMap';
 import MountingTracker from '../../components/MountingTracker';
