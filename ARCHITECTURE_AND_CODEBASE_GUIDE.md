@@ -53,6 +53,8 @@ This document is designed to teach you the system architecture, file structure, 
 
 ## 1. High-Level Architecture
 
+![ADVERSE Platform Architecture](docs/adverse_architecture.jpg)
+
 The platform operates on a three-tier architecture connecting Web, Mobile, and Cloud Backend:
 
 ```mermaid
