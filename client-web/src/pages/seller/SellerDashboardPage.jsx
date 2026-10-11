@@ -77,6 +77,8 @@ export default function SellerDashboardPage() {
 
   // File upload input ref
   const fileInputRef = useRef(null);
+  const newHoardingFileInputRef = useRef(null);
+  const [newHoardingUploadLoading, setNewHoardingUploadLoading] = useState(false);
   const [manualPhotoUrl, setManualPhotoUrl] = useState('');
 
   const [sellerActiveTab, setSellerActiveTab] = useState('inventory'); // 'inventory' | 'bookings' | 'payments'
@@ -260,7 +262,7 @@ export default function SellerDashboardPage() {
 
     setUploadLoading(true);
     try {
-      const res = await api.post('/upload/single', formData, {
+      const res = await api.post('/upload/single?folder=adverse/hoardings', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       if (res.data.success && res.data.fileUrl) {
@@ -271,7 +273,7 @@ export default function SellerDashboardPage() {
         setHoardings((prev) =>
           prev.map((h) => (h._id === photoManagerModal._id ? { ...h, photos: updatedPhotos } : h))
         );
-        showToast('Photo uploaded and added to hoarding board!');
+        showToast('Photo uploaded to Cloudinary and added to hoarding board!');
       }
     } catch (err) {
       console.error(err);
@@ -280,6 +282,48 @@ export default function SellerDashboardPage() {
       setUploadLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  // Upload Photo(s) for New Hoarding Enlistment
+  const handleNewHoardingFileUpload = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setNewHoardingUploadLoading(true);
+    try {
+      const uploadedUrls = [];
+      for (let i = 0; i < files.length; i++) {
+        const formData = new FormData();
+        formData.append('file', files[i]);
+        const res = await api.post('/upload/single?folder=adverse/hoardings', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (res.data.success && res.data.fileUrl) {
+          uploadedUrls.push(res.data.fileUrl);
+        }
+      }
+      if (uploadedUrls.length > 0) {
+        setNewHoarding((prev) => ({
+          ...prev,
+          photos: [...(prev.photos || []), ...uploadedUrls]
+        }));
+        showToast(`${uploadedUrls.length} photo(s) uploaded to Cloudinary CDN successfully!`);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to upload photo.', 'error');
+    } finally {
+      setNewHoardingUploadLoading(false);
+      if (newHoardingFileInputRef.current) newHoardingFileInputRef.current.value = '';
+    }
+  };
+
+  // Remove photo from New Hoarding draft
+  const handleRemoveNewHoardingPhoto = (indexToRemove) => {
+    setNewHoarding((prev) => ({
+      ...prev,
+      photos: (prev.photos || []).filter((_, idx) => idx !== indexToRemove)
+    }));
   };
 
   // Add Photo via URL
@@ -2124,6 +2168,72 @@ export default function SellerDashboardPage() {
                     className="w-full border border-slate-200 p-2 rounded-xl"
                   />
                 </div>
+              </div>
+
+              {/* Cloudinary Hoarding Photos Upload */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block font-bold text-slate-800 text-xs">
+                      Hoarding Photos (Cloudinary CDN)
+                    </label>
+                    <p className="text-[10px] text-slate-400">
+                      Upload high-resolution photos of the hoarding board or site.
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-indigo-50 text-indigo-700">
+                    Cloudinary Active
+                  </span>
+                </div>
+
+                <input
+                  type="file"
+                  multiple
+                  ref={newHoardingFileInputRef}
+                  onChange={handleNewHoardingFileUpload}
+                  accept="image/*"
+                  className="hidden"
+                />
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => newHoardingFileInputRef.current?.click()}
+                    disabled={newHoardingUploadLoading}
+                    className="flex-1 py-2 px-3 bg-white border border-dashed border-indigo-300 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-xl text-xs font-bold text-indigo-600 flex items-center justify-center gap-1.5 transition"
+                  >
+                    {newHoardingUploadLoading ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5" />
+                    )}
+                    <span>{newHoardingUploadLoading ? 'Uploading to Cloudinary...' : 'Upload Photos from Device'}</span>
+                  </button>
+                </div>
+
+                {/* Uploaded Photos Preview Grid */}
+                {newHoarding.photos && newHoarding.photos.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2 pt-1">
+                    {newHoarding.photos.map((url, idx) => (
+                      <div key={idx} className="relative rounded-lg overflow-hidden border border-slate-200 h-16 bg-slate-100 group">
+                        <img src={url} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
+                        {idx === 0 && (
+                          <span className="absolute top-1 left-1 px-1 py-0.2 rounded text-[8px] font-black bg-indigo-600 text-white">
+                            Cover
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveNewHoardingPhoto(idx)}
+                          className="absolute top-1 right-1 p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full transition opacity-90 group-hover:opacity-100"
+                          title="Remove photo"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">

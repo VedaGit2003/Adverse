@@ -1,6 +1,7 @@
 const Booking = require('../../models/Booking');
 const Hoarding = require('../../models/Hoarding');
 const Payment = require('../../models/Payment');
+const { isCloudinaryConfigured, uploadDataUriToCloudinary } = require('../../utils/cloudinary');
 
 // ============================================================================
 // CONFIGURABLE DEFAULT TIMINGS & WINDOW DURATIONS
@@ -477,11 +478,21 @@ exports.uploadMountingProof = async (req, res, next) => {
     const now = new Date();
     const verificationExpires = new Date(now.getTime() + DEFAULT_VERIFICATION_WINDOW_HOURS * 60 * 60 * 1000); // Configurable customer verification countdown window (default 4 hours)
 
+    let finalPhotoUrl = proofPhotoUrl;
+    if (proofPhotoUrl && proofPhotoUrl.startsWith('data:image/') && isCloudinaryConfigured) {
+      try {
+        const cloudRes = await uploadDataUriToCloudinary(proofPhotoUrl, { folder: 'adverse/mounting_proofs' });
+        finalPhotoUrl = cloudRes.secure_url;
+      } catch (cloudErr) {
+        console.error('[MountingProof] Failed to upload base64 to Cloudinary:', cloudErr.message);
+      }
+    }
+
     if (!booking.mountingDetails) booking.mountingDetails = {};
 
     booking.mountingDetails.mountingStatus = 'completed';
     booking.mountingDetails.confirmationStatus = 'proof_uploaded';
-    booking.mountingDetails.proofPhotoUrl = proofPhotoUrl;
+    booking.mountingDetails.proofPhotoUrl = finalPhotoUrl;
     booking.mountingDetails.proofCaptureDateTime =
       proofCaptureDateTime || now.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
     booking.mountingDetails.proofUploadedAt = now;

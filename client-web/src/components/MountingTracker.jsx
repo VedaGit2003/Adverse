@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import {
   Clock,
@@ -15,7 +15,8 @@ import {
   ChevronUp,
   Upload,
   AlertTriangle,
-  Layers
+  Layers,
+  RefreshCw
 } from 'lucide-react';
 
 export default function MountingTracker({
@@ -33,6 +34,44 @@ export default function MountingTracker({
   const [showRejectBox, setShowRejectBox] = useState(false);
   const [timeLeftMounting, setTimeLeftMounting] = useState('');
   const [timeLeftVerification, setTimeLeftVerification] = useState('');
+
+  // Cloudinary Direct Proof File Upload
+  const proofFileInputRef = useRef(null);
+  const [uploadingProofFile, setUploadingProofFile] = useState(false);
+
+  const handleProofFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setUploadingProofFile(true);
+    try {
+      const res = await api.post('/upload/single?folder=adverse/mounting_proofs', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data.success && res.data.fileUrl) {
+        setProofPhotoUrl(res.data.fileUrl);
+        if (!proofCaptureDateTime) {
+          setProofCaptureDateTime(
+            new Date().toLocaleString('en-IN', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          );
+        }
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to upload image to Cloudinary.');
+    } finally {
+      setUploadingProofFile(false);
+      if (proofFileInputRef.current) proofFileInputRef.current.value = '';
+    }
+  };
 
   const m = booking?.mountingDetails || {};
   const isSellerOrAdmin = userRole === 'seller' || userRole === 'admin';
@@ -440,6 +479,63 @@ export default function MountingTracker({
           <p className="text-xs text-slate-500">
             Once uploaded, a <strong>4-hour verification window</strong> will begin for customer and admin.
           </p>
+
+          {/* Cloudinary Device Upload Box */}
+          <div className="p-3 bg-white rounded-xl border border-indigo-100 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+            <input
+              type="file"
+              ref={proofFileInputRef}
+              onChange={handleProofFileUpload}
+              accept="image/*"
+              className="hidden"
+            />
+            <div className="flex items-center gap-2">
+              <span className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                <Camera className="w-4 h-4" />
+              </span>
+              <div>
+                <span className="block text-xs font-bold text-slate-800">
+                  Select Photo from Device
+                </span>
+                <span className="block text-[10px] text-slate-400">
+                  Direct upload to Cloudinary CDN with automatic timestamping
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => proofFileInputRef.current?.click()}
+              disabled={uploadingProofFile}
+              className="w-full sm:w-auto px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5 shadow-2xs"
+            >
+              {uploadingProofFile ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              <span>{uploadingProofFile ? 'Uploading to Cloudinary...' : 'Upload Image File'}</span>
+            </button>
+          </div>
+
+          {/* Live Preview If Uploaded */}
+          {proofPhotoUrl && (
+            <div className="p-2.5 bg-indigo-50/60 rounded-xl border border-indigo-200 flex items-center gap-3">
+              <img
+                src={proofPhotoUrl}
+                alt="Selected Proof Preview"
+                className="w-16 h-12 object-cover rounded-lg border border-indigo-200 shrink-0 shadow-2xs"
+              />
+              <div className="text-xs flex-1 min-w-0">
+                <span className="text-[10px] font-black uppercase text-indigo-700 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Photo Ready (Cloudinary)
+                </span>
+                <p className="font-mono text-[11px] text-slate-600 truncate mt-0.5">
+                  {proofPhotoUrl}
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div>

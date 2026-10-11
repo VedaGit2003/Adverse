@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import mobileApi from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import MobileHoardingMap from '../components/MobileHoardingMap';
@@ -318,6 +319,8 @@ export default function SellerDashboardScreen({ navigation }) {
     notes: ''
   });
   const [uploadingProof, setUploadingProof] = useState(false);
+  const [uploadingProofImage, setUploadingProofImage] = useState(false);
+  const [uploadingHoardingImage, setUploadingHoardingImage] = useState(false);
   const [approvingBookingId, setApprovingBookingId] = useState(null);
 
   // Business Profile Form
@@ -562,6 +565,130 @@ export default function SellerDashboardScreen({ navigation }) {
     } finally {
       setUploadingProof(false);
     }
+  };
+
+  // Pick or Capture Proof Photo for Mounting Phase 3 via Cloudinary
+  const handlePickProofImage = async (useCamera = false) => {
+    try {
+      if (useCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera permission is required to capture mounting proof.');
+          return;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Gallery access is required to select photos.');
+          return;
+        }
+      }
+
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+            base64: true
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+            base64: true
+          });
+
+      if (!result.canceled && result.assets && result.assets[0]?.base64) {
+        setUploadingProofImage(true);
+        const base64Data = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        const res = await mobileApi.post('/upload/base64', {
+          image: base64Data,
+          folder: 'adverse/mounting_proofs'
+        });
+
+        if (res.data?.success && res.data?.fileUrl) {
+          setProofForm(prev => ({
+            ...prev,
+            proofPhotoUrl: res.data.fileUrl,
+            capturedAt: new Date().toLocaleString('en-IN')
+          }));
+          Alert.alert('Photo Uploaded! ☁️', 'Proof photo successfully uploaded to Cloudinary CDN.');
+        } else {
+          Alert.alert('Upload Failed', res.data?.message || 'Could not upload photo.');
+        }
+      }
+    } catch (err) {
+      console.warn('Image picker error:', err);
+      Alert.alert('Upload Error', err.response?.data?.message || err.message || 'Failed to upload photo.');
+    } finally {
+      setUploadingProofImage(false);
+    }
+  };
+
+  // Pick or Capture Hoarding Photo for Enlistment via Cloudinary
+  const handlePickHoardingImage = async (useCamera = false) => {
+    try {
+      if (useCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera permission is required to take photo.');
+          return;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Gallery access is required to select photos.');
+          return;
+        }
+      }
+
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [16, 9],
+            quality: 0.8,
+            base64: true
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [16, 9],
+            quality: 0.8,
+            base64: true
+          });
+
+      if (!result.canceled && result.assets && result.assets[0]?.base64) {
+        setUploadingHoardingImage(true);
+        const base64Data = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        const res = await mobileApi.post('/upload/base64', {
+          image: base64Data,
+          folder: 'adverse/hoardings'
+        });
+
+        if (res.data?.success && res.data?.fileUrl) {
+          setNewHoarding(prev => ({
+            ...prev,
+            photos: [...(prev.photos || []), res.data.fileUrl]
+          }));
+          Alert.alert('Photo Uploaded! ☁️', 'Hoarding image uploaded to Cloudinary CDN.');
+        } else {
+          Alert.alert('Upload Failed', res.data?.message || 'Could not upload photo.');
+        }
+      }
+    } catch (err) {
+      console.warn('Image picker error:', err);
+      Alert.alert('Upload Error', err.response?.data?.message || err.message || 'Failed to upload photo.');
+    } finally {
+      setUploadingHoardingImage(false);
+    }
+  };
+
+  const handleRemoveHoardingPhoto = (indexToRemove) => {
+    setNewHoarding(prev => ({
+      ...prev,
+      photos: (prev.photos || []).filter((_, idx) => idx !== indexToRemove)
+    }));
   };
 
   const handlePointPicked = (lat, lng) => {
@@ -1224,6 +1351,67 @@ export default function SellerDashboardScreen({ navigation }) {
               onChangeText={t => setNewHoarding(p => ({ ...p, baseRatePerMonth: t }))}
             />
 
+            {/* Cloudinary Hoarding Photos Upload */}
+            <View style={[styles.cloudUploadBox, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="images" size={16} color="#2563eb" />
+                  <Text style={[styles.cloudUploadTitle, { color: '#1e40af' }]}>Site Photos (Cloudinary)</Text>
+                </View>
+                <View style={[styles.cloudUploadBadge, { backgroundColor: '#dbeafe' }]}>
+                  <Text style={[styles.cloudUploadBadgeText, { color: '#1d4ed8' }]}>Cloud Storage</Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => handlePickHoardingImage(true)}
+                  disabled={uploadingHoardingImage}
+                  style={[styles.cloudPickerBtn, { backgroundColor: '#2563eb' }]}
+                >
+                  {uploadingHoardingImage ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="camera" size={16} color="#fff" />
+                  )}
+                  <Text style={styles.cloudPickerBtnText}>Take Photo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => handlePickHoardingImage(false)}
+                  disabled={uploadingHoardingImage}
+                  style={[styles.cloudPickerBtn, { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#cbd5e1' }]}
+                >
+                  <Ionicons name="image-outline" size={16} color="#334155" />
+                  <Text style={[styles.cloudPickerBtnText, { color: '#334155' }]}>From Gallery</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Photos List Horizontal Scroll */}
+              {newHoarding.photos && newHoarding.photos.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {newHoarding.photos.map((url, idx) => (
+                      <View key={idx} style={styles.cloudPhotoThumbWrap}>
+                        <Image source={{ uri: url }} style={styles.cloudPhotoThumb} />
+                        {idx === 0 && (
+                          <View style={styles.cloudCoverBadge}>
+                            <Text style={styles.cloudCoverBadgeText}>Cover</Text>
+                          </View>
+                        )}
+                        <TouchableOpacity
+                          onPress={() => handleRemoveHoardingPhoto(idx)}
+                          style={styles.cloudPhotoRemoveBtn}
+                        >
+                          <Ionicons name="close" size={12} color="#fff" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+              ) : null}
+            </View>
+
             <TouchableOpacity
               onPress={handleAddHoardingSubmit}
               style={styles.submitModalBtn}
@@ -1345,10 +1533,47 @@ export default function SellerDashboardScreen({ navigation }) {
               </Text>
             </View>
 
+            {/* Cloudinary Camera & Gallery Action Box */}
+            <View style={styles.cloudUploadBox}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="cloud-upload" size={16} color="#7e22ce" />
+                  <Text style={styles.cloudUploadTitle}>Cloudinary Direct Upload</Text>
+                </View>
+                <View style={styles.cloudUploadBadge}>
+                  <Text style={styles.cloudUploadBadgeText}>Fast CDN</Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => handlePickProofImage(true)}
+                  disabled={uploadingProofImage}
+                  style={[styles.cloudPickerBtn, { backgroundColor: '#7e22ce' }]}
+                >
+                  {uploadingProofImage ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="camera" size={16} color="#fff" />
+                  )}
+                  <Text style={styles.cloudPickerBtnText}>Take Photo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => handlePickProofImage(false)}
+                  disabled={uploadingProofImage}
+                  style={[styles.cloudPickerBtn, { backgroundColor: '#f3e8ff', borderWidth: 1, borderColor: '#d8b4fe' }]}
+                >
+                  <Ionicons name="images" size={16} color="#7e22ce" />
+                  <Text style={[styles.cloudPickerBtnText, { color: '#7e22ce' }]}>From Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <Text style={styles.inputLabel}>Proof Image URL *</Text>
             <TextInput
               style={styles.input}
-              placeholder="https://... (or select sample below)"
+              placeholder="https://... (or use Camera / Gallery above)"
               value={proofForm.proofPhotoUrl}
               onChangeText={t => setProofForm(p => ({ ...p, proofPhotoUrl: t }))}
             />
@@ -2432,5 +2657,82 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     fontFamily: 'monospace',
+  },
+  cloudUploadBox: {
+    backgroundColor: '#faf5ff',
+    borderWidth: 1,
+    borderColor: '#e9d5ff',
+    borderRadius: 14,
+    padding: 12,
+    marginVertical: 10,
+  },
+  cloudUploadTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6b21a8',
+  },
+  cloudUploadBadge: {
+    backgroundColor: '#f3e8ff',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  cloudUploadBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#7e22ce',
+    textTransform: 'uppercase',
+  },
+  cloudPickerBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  cloudPickerBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cloudPhotoThumbWrap: {
+    width: 70,
+    height: 70,
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  cloudPhotoThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  cloudCoverBadge: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  cloudCoverBadgeText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '900',
+  },
+  cloudPhotoRemoveBtn: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#e11d48',
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

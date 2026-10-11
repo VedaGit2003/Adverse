@@ -40,6 +40,12 @@ This document is designed to teach you the system architecture, file structure, 
 10. [Client Role Boundaries & Hoarding Enlistment Protection](#10-client-role-boundaries--hoarding-enlistment-protection)
    - [Role Privilege Matrix](#role-privilege-matrix)
    - [Multi-Tier Guard Architecture](#multi-tier-guard-architecture)
+11. [Cloudinary CDN & Multi-Platform Image Upload Architecture](#11-cloudinary-cdn--multi-platform-image-upload-architecture)
+   - [Credentials & Environment Configuration](#credentials--environment-configuration)
+   - [Core Backend Utility Engine](#core-backend-utility-engine-serversrcutilscloudinaryjs)
+   - [Centralized Upload Endpoints](#centralized-upload-endpoints-serversrcmodulesuploaduploadroutesjs)
+   - [Web Client Integration](#web-client-integration-client-web)
+   - [Mobile Client Integration](#mobile-client-integration-client-mobile)
 
 ---
 
@@ -574,6 +580,91 @@ To maintain platform trust and legal compliance, **Clients (Advertisers)** are s
      `Clients (Advertisers) are not allowed to enlist or manage hoarding sites. Only accredited Media Owners (Sellers) have enlistment privileges.`
 5. **Controller-Level Security (`server/src/modules/hoardings/hoarding.controller.js`):**
    - `createHoarding` explicitly verifies `req.user?.role !== 'customer'` before processing any coordinates or MongoDB mutations.
+
+---
+
+## 11. Cloudinary CDN & Multi-Platform Image Upload Architecture
+
+The platform uses **Cloudinary** as the centralized Media Content Delivery Network (CDN) for all high-resolution billboard photos, site documentation, and timestamped Phase 3 mounting proof captures across Web, Mobile, and Backend.
+
+```mermaid
+flowchart TD
+    subgraph Clients["Clients"]
+        WebModal["Web Enlist Modal & Mounting Tracker\n(HTML5 File Input / Drag & Drop)"]
+        MobileCamera["Mobile Seller Desk\n(expo-image-picker Camera / Gallery)"]
+    end
+
+    subgraph Server["Backend API (/api/upload)"]
+        MulterStream["POST /api/upload/single\n(multer memoryBuffer stream)"]
+        Base64Stream["POST /api/upload/base64\n(Base64 Data URI)"]
+        CloudinaryUtil["server/src/utils/cloudinary.js\nuploadBufferToCloudinary() / uploadDataUriToCloudinary()"]
+        FallbackDisk["Local Disk Fallback (/uploads/...)\n(Automatic Resilient Fallback)"]
+    end
+
+    subgraph Cloud["Cloudinary CDN (dsdpnz2xz)"]
+        CloudinaryCDN["Cloudinary Media Library\n- adverse/hoardings\n- adverse/mounting_proofs"]
+    end
+
+    WebModal -->|multipart/form-data| MulterStream
+    MobileCamera -->|JSON base64| Base64Stream
+    MulterStream --> CloudinaryUtil
+    Base64Stream --> CloudinaryUtil
+    CloudinaryUtil -->|Upload Stream| CloudinaryCDN
+    CloudinaryUtil -.->|On Network/Quota Error| FallbackDisk
+```
+
+### Credentials & Environment Configuration
+
+Stored securely in `server/.env` (and protected from git commits by `.gitignore`):
+```env
+CLOUDINARY_CLOUD_NAME=dsdpnz2xz
+CLOUDINARY_API_KEY=552874493434357
+CLOUDINARY_API_SECRET=E_6Mx31rE1lBCAaRFGmh6mJGsF4
+```
+
+Exported cleanly in `server/src/config/env.js` and loaded dynamically by `cloudinary.v2`.
+
+### Core Backend Utility Engine (`server/src/utils/cloudinary.js`)
+
+1. **`uploadBufferToCloudinary(buffer, options)`**:
+   - Uses `cloudinary.uploader.upload_stream` wrapped in a native Promise.
+   - Pushes multer's in-memory file buffers without creating temporary disk files.
+   - Automatically falls back to `saveBufferLocally(buffer, originalname)` if Cloudinary credentials are missing or unreachable, ensuring zero operational downtime.
+2. **`uploadDataUriToCloudinary(dataUri, options)`**:
+   - Designed specifically for React Native / Expo mobile camera captures where base64 data URIs (`data:image/jpeg;base64,...`) are transmitted.
+   - Saves base64 strings directly to Cloudinary folder destinations (`adverse/mounting_proofs`, `adverse/hoardings`).
+
+### Centralized Upload Endpoints (`server/src/modules/upload/upload.routes.js`)
+
+| Endpoint | Method | Format | Description |
+|---|:---:|:---:|---|
+| `/api/upload/single` | `POST` | `multipart/form-data` | Uploads a single image buffer to Cloudinary CDN (accepts `?folder=...` query param). |
+| `/api/upload/multiple` | `POST` | `multipart/form-data` | Batch-uploads up to 10 images concurrently to Cloudinary CDN. |
+| `/api/upload/base64` | `POST` | `application/json` | Uploads base64 camera snapshot strings directly to Cloudinary CDN. |
+
+### Web Client Integration (`client-web`)
+
+1. **Seller Dashboard Enlistment Modal (`SellerDashboardPage.jsx`):**
+   - Direct file picker button `Upload Photos from Device` with Cloudinary CDN tag.
+   - Posts selected files to `/api/upload/single?folder=adverse/hoardings`.
+   - Live thumbnail preview strip with instant cover-photo badge and delete (`X`) buttons.
+2. **Mounting Tracker (`MountingTracker.jsx`):**
+   - Integrated in Phase 3 proof submission form with `Select Photo from Device` button.
+   - Uploads to `adverse/mounting_proofs` folder.
+   - Instantly renders high-resolution proof thumbnail with a verified `Photo Ready (Cloudinary)` tag and auto-fills the capture timestamp.
+
+### Mobile Client Integration (`client-mobile`)
+
+1. **Seller Dashboard Mounting Proof Modal (`SellerDashboardScreen.js`):**
+   - Directly triggers `expo-image-picker`:
+     - **📷 Take Photo:** Launches native device camera with crop/aspect ratio guides.
+     - **🖼️ From Gallery:** Launches system photo picker.
+   - Encodes image with `base64: true` and posts to `/api/upload/base64` with `folder: 'adverse/mounting_proofs'`.
+   - Displays live photo preview overlaying date and time stamp.
+2. **Seller Dashboard Hoarding Enlistment Modal (`SellerDashboardScreen.js`):**
+   - Allows sellers on-site to snap photos of their new billboard structures or pick from their gallery.
+   - Uploads to `adverse/hoardings` and renders a horizontal thumbnail carousel with cover indicators and remove buttons before publishing to the marketplace.
+
 
 
 
