@@ -603,7 +603,7 @@ flowchart TD
         FallbackDisk["Local Disk Fallback (/uploads/...)\n(Automatic Resilient Fallback)"]
     end
 
-    subgraph Cloud["Cloudinary CDN (dsdpnz2xz)"]
+    subgraph Cloud["Cloudinary CDN"]
         CloudinaryCDN["Cloudinary Media Library\n- adverse/hoardings\n- adverse/mounting_proofs"]
     end
 
@@ -619,9 +619,9 @@ flowchart TD
 
 Stored securely in `server/.env` (and protected from git commits by `.gitignore`):
 ```env
-CLOUDINARY_CLOUD_NAME=dsdpnz2xz
-CLOUDINARY_API_KEY=552874493434357
-CLOUDINARY_API_SECRET=E_6Mx31rE1lBCAaRFGmh6mJGsF4
+CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 ```
 
 Exported cleanly in `server/src/config/env.js` and loaded dynamically by `cloudinary.v2`.
@@ -636,7 +636,7 @@ Exported cleanly in `server/src/config/env.js` and loaded dynamically by `cloudi
    - Designed specifically for React Native / Expo mobile camera captures where base64 data URIs (`data:image/jpeg;base64,...`) are transmitted.
    - Saves base64 strings directly to Cloudinary folder destinations (`adverse/mounting_proofs`, `adverse/hoardings`).
 3. **`getPublicIdFromUrl(url)`**:
-   - Robustly parses Cloudinary CDN URLs (e.g. `https://res.cloudinary.com/dsdpnz2xz/image/upload/v172866/adverse/hoardings/ys5llbp.jpg`).
+   - Robustly parses Cloudinary CDN URLs (e.g. `https://res.cloudinary.com/<cloud_name>/image/upload/v172866/adverse/hoardings/ys5llbp.jpg`).
    - Extracts the clean Cloudinary public ID (e.g. `adverse/hoardings/ys5llbp`), stripping version prefixes and file extensions.
 4. **`deleteFromCloudinary(publicIdOrUrl)`**:
    - Executes permanent asset deletion on Cloudinary via `cloudinary.uploader.destroy(publicId)`.

@@ -68,7 +68,7 @@ const uploadDataUriToCloudinary = async (fileOrDataUri, options = {}) => {
 
 /**
  * Extract Cloudinary public_id from a URL
- * e.g. https://res.cloudinary.com/dsdpnz2xz/image/upload/v1791737596/adverse/hoardings/ys5llbp39jces0wno4q7.png
+ * e.g. https://res.cloudinary.com/<cloud_name>/image/upload/v1791737596/adverse/hoardings/ys5llbp39jces0wno4q7.png
  * => adverse/hoardings/ys5llbp39jces0wno4q7
  */
 const getPublicIdFromUrl = (url) => {
