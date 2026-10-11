@@ -7,7 +7,8 @@ const { verifyToken } = require('../../middlewares/auth.middleware');
 const {
   isCloudinaryConfigured,
   uploadBufferToCloudinary,
-  uploadDataUriToCloudinary
+  uploadDataUriToCloudinary,
+  deleteFromCloudinary
 } = require('../../utils/cloudinary');
 
 // Fallback local uploads directory
@@ -158,6 +159,47 @@ router.post('/base64', verifyToken, async (req, res, next) => {
     }
 
     return res.status(400).json({ success: false, message: 'Invalid base64 image format.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   DELETE /api/upload
+ * @desc    Delete an image file from Cloudinary (or local disk)
+ * @access  Private
+ */
+router.delete('/', verifyToken, async (req, res, next) => {
+  try {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ success: false, message: 'Image URL is required for deletion.' });
+    }
+
+    if (url.includes('cloudinary.com')) {
+      const result = await deleteFromCloudinary(url);
+      return res.status(200).json({
+        success: true,
+        provider: 'cloudinary',
+        message: 'Asset removed from Cloudinary.',
+        result
+      });
+    }
+
+    if (url.startsWith('/uploads/')) {
+      const filename = path.basename(url);
+      const filePath = path.join(uploadDir, filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      return res.status(200).json({
+        success: true,
+        provider: 'local',
+        message: 'Local asset file deleted.'
+      });
+    }
+
+    return res.status(200).json({ success: true, message: 'Processed deletion request.' });
   } catch (error) {
     next(error);
   }

@@ -7,7 +7,9 @@ const {
   getUsers, 
   getSellersAdmin, 
   moderateHoarding,
-  moderateSellerStatus
+  moderateSellerStatus,
+  getCoverDeletionRequests,
+  moderateCoverDeletionRequest
 } = require('./admin.controller');
 const { verifyToken, authorizeRoles } = require('../../middlewares/auth.middleware');
 
@@ -21,5 +23,7 @@ router.get('/users', getUsers);
 router.get('/sellers', getSellersAdmin);
 router.put('/hoardings/:id/approve', moderateHoarding);
 router.put('/sellers/:id/status', moderateSellerStatus);
+router.get('/cover-deletion-requests', getCoverDeletionRequests);
+router.put('/cover-deletion-requests/:id', moderateCoverDeletionRequest);
 
 module.exports = router;

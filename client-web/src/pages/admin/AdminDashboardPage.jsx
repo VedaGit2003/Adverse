@@ -29,16 +29,21 @@ import {
   Compass,
   Edit3,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2
 } from 'lucide-react';
 import HoardingMap from '../../components/HoardingMap';
 import MountingTracker from '../../components/MountingTracker';
 
 export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState('hoardings'); // 'hoardings' | 'bookings' | 'users' | 'sellers'
+  const [activeTab, setActiveTab] = useState('hoardings'); // 'hoardings' | 'bookings' | 'users' | 'sellers' | 'cover-requests'
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Cover photo deletion requests
+  const [coverDeletionRequests, setCoverDeletionRequests] = useState([]);
+  const [moderatingRequestId, setModeratingRequestId] = useState(null);
 
   // Hoardings tab state
   const [hoardings, setHoardings] = useState([]);
@@ -142,12 +147,13 @@ export default function AdminDashboardPage() {
     else setRefreshing(true);
 
     try {
-      const [metricsRes, hoardingsRes, bookingsRes, usersRes, sellersRes] = await Promise.all([
+      const [metricsRes, hoardingsRes, bookingsRes, usersRes, sellersRes, coverReqsRes] = await Promise.all([
         api.get('/admin/metrics'),
         api.get('/admin/hoardings'),
         api.get('/admin/bookings'),
         api.get('/admin/users'),
-        api.get('/admin/sellers')
+        api.get('/admin/sellers'),
+        api.get('/admin/cover-deletion-requests').catch(() => ({ data: { requests: [] } }))
       ]);
 
       setMetrics(metricsRes.data.metrics);
@@ -155,6 +161,7 @@ export default function AdminDashboardPage() {
       setBookings(bookingsRes.data.bookings || []);
       setUsers(usersRes.data.users || []);
       setSellers(sellersRes.data.sellers || []);
+      setCoverDeletionRequests(coverReqsRes.data.requests || []);
     } catch (err) {
       console.error('Error fetching admin dashboard data:', err);
       showToast('Failed to load updated platform data', 'error');
@@ -167,6 +174,30 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     fetchAllData();
   }, []);
+
+  // Handle Cover Photo Deletion Moderation (Approve/Reject)
+  const handleModerateCoverDeletion = async (hoardingId, action) => {
+    setModeratingRequestId(hoardingId);
+    try {
+      const res = await api.put(`/admin/cover-deletion-requests/${hoardingId}`, {
+        action,
+        adminNotes: action === 'approve' ? 'Approved by Super Admin' : 'Rejected by Super Admin'
+      });
+      if (res.data.success) {
+        showToast(
+          action === 'approve'
+            ? 'Cover photo deletion approved! Asset permanently destroyed in Cloudinary.'
+            : 'Cover photo deletion request rejected.'
+        );
+        fetchAllData(true);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to process cover deletion request.', 'error');
+    } finally {
+      setModeratingRequestId(null);
+    }
+  };
 
   // Handle Hoarding Moderation Toggle
   const handleModerateHoarding = async (hoardingId, currentApproved) => {
@@ -530,6 +561,27 @@ export default function AdminDashboardPage() {
             >
               {sellers.length}
             </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('cover-requests')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition ${
+              activeTab === 'cover-requests'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4 text-amber-500" />
+            <span>Cover Photo Requests</span>
+            {coverDeletionRequests.length > 0 ? (
+              <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-black bg-rose-500 text-white animate-pulse">
+                {coverDeletionRequests.length}
+              </span>
+            ) : (
+              <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500">
+                0
+              </span>
+            )}
           </button>
         </div>
 
@@ -1410,6 +1462,145 @@ export default function AdminDashboardPage() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 5: COVER PHOTO DELETION REQUESTS (ADMIN ACTION) */}
+        {/* ============================================================== */}
+        {activeTab === 'cover-requests' && (
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 text-amber-900">
+                    Platform Moderation
+                  </span>
+                  <span className="text-xs font-semibold text-slate-400">• Cloudinary Sync</span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 mt-1">
+                  Pending Cover Photo Deletion Requests ({coverDeletionRequests.length})
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Media owners cannot delete cover photos directly. Review each deletion request below. Approving a request will permanently destroy the asset in Cloudinary.
+                </p>
+              </div>
+              <button
+                onClick={() => fetchAllData(true)}
+                disabled={refreshing}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {coverDeletionRequests.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+                <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-emerald-600">
+                  <ShieldCheck className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-black text-slate-900">All Cover Photos Healthy</h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                  There are currently no pending cover photo deletion requests from media owners. All marketplace cover images are verified and intact.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {coverDeletionRequests.map((h) => {
+                  const req = h.coverPhotoDeletionRequest || {};
+                  return (
+                    <div
+                      key={h._id}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 hover:border-slate-300 transition"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="relative w-28 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shrink-0 shadow-2xs">
+                          <img
+                            src={req.photoUrl || h.photos?.[0]}
+                            alt={h.title}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-indigo-600 text-white shadow-xs">
+                            Cover
+                          </span>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800">
+                              Deletion Requested
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {h.location?.city}
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-black text-slate-900 truncate mt-1">
+                            {h.title}
+                          </h4>
+                          <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
+                            {h.location?.address}
+                          </p>
+
+                          <div className="mt-2 text-[11px] text-slate-600 flex items-center gap-1">
+                            <span className="font-bold">Seller:</span>
+                            <span className="text-indigo-600 font-semibold truncate">
+                              {h.sellerId?.companyDetails?.companyName || h.sellerId?.name || 'Media Owner'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Deletion Reason Quote Box */}
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                        <span className="font-bold text-slate-700 block text-[11px] uppercase tracking-wider mb-1">
+                          Seller's Justification:
+                        </span>
+                        <p className="text-slate-800 italic">
+                          "{req.reason || 'Media owner requested removal of cover picture'}"
+                        </p>
+                        {req.requestedAt && (
+                          <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>Requested on: {new Date(req.requestedAt).toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => handleModerateCoverDeletion(h._id, 'reject')}
+                          disabled={moderatingRequestId === h._id}
+                          className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Reject Request</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to approve deletion of the cover photo for "${h.title}"? This will permanently delete the photo from Cloudinary.`)) {
+                              handleModerateCoverDeletion(h._id, 'approve');
+                            }
+                          }}
+                          disabled={moderatingRequestId === h._id}
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5"
+                        >
+                          {moderatingRequestId === h._id ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                          <span>Approve & Delete from Cloudinary</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -248,32 +248,38 @@ export default function SellerDashboardPage() {
     setPhotoManagerModal({
       _id: hoarding._id,
       title: hoarding.title,
-      photos: [...(hoarding.photos || [])]
+      photos: [...(hoarding.photos || [])],
+      coverPhotoDeletionRequest: hoarding.coverPhotoDeletionRequest || { status: 'none' }
     });
   };
 
-  // Upload Photo File from Device
+  // Upload Photo File(s) from Device to Cloudinary Gallery
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append('file', file);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setUploadLoading(true);
     try {
-      const res = await api.post('/upload/single?folder=adverse/hoardings', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      if (res.data.success && res.data.fileUrl) {
-        const updatedPhotos = [...photoManagerModal.photos, res.data.fileUrl];
+      const uploadedUrls = [];
+      for (let i = 0; i < files.length; i++) {
+        const formData = new FormData();
+        formData.append('file', files[i]);
+        const res = await api.post('/upload/single?folder=adverse/hoardings', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (res.data.success && res.data.fileUrl) {
+          uploadedUrls.push(res.data.fileUrl);
+        }
+      }
+
+      if (uploadedUrls.length > 0) {
+        const updatedPhotos = [...photoManagerModal.photos, ...uploadedUrls];
         setPhotoManagerModal((prev) => ({ ...prev, photos: updatedPhotos }));
-        // Automatically save to backend
         await api.put(`/hoardings/${photoManagerModal._id}`, { photos: updatedPhotos });
         setHoardings((prev) =>
           prev.map((h) => (h._id === photoManagerModal._id ? { ...h, photos: updatedPhotos } : h))
         );
-        showToast('Photo uploaded to Cloudinary and added to hoarding board!');
+        showToast(`${uploadedUrls.length} photo(s) uploaded to Cloudinary gallery!`);
       }
     } catch (err) {
       console.error(err);
@@ -318,45 +324,82 @@ export default function SellerDashboardPage() {
     }
   };
 
-  // Remove photo from New Hoarding draft
-  const handleRemoveNewHoardingPhoto = (indexToRemove) => {
+  // Remove photo from New Hoarding draft and Cloudinary
+  const handleRemoveNewHoardingPhoto = async (indexToRemove) => {
+    const photoUrl = (newHoarding.photos || [])[indexToRemove];
     setNewHoarding((prev) => ({
       ...prev,
       photos: (prev.photos || []).filter((_, idx) => idx !== indexToRemove)
     }));
-  };
 
-  // Add Photo via URL
-  const handleAddPhotoUrl = async () => {
-    if (!manualPhotoUrl.trim()) return;
-    const updatedPhotos = [...photoManagerModal.photos, manualPhotoUrl.trim()];
-    setPhotoManagerModal((prev) => ({ ...prev, photos: updatedPhotos }));
-    setManualPhotoUrl('');
-
-    try {
-      await api.put(`/hoardings/${photoManagerModal._id}`, { photos: updatedPhotos });
-      setHoardings((prev) =>
-        prev.map((h) => (h._id === photoManagerModal._id ? { ...h, photos: updatedPhotos } : h))
-      );
-      showToast('Photo URL added to hoarding board!');
-    } catch (err) {
-      showToast('Failed to save photo URL.', 'error');
+    if (photoUrl && photoUrl.includes('cloudinary.com')) {
+      try {
+        await api.delete('/upload', { data: { url: photoUrl } });
+      } catch (e) {
+        console.warn('Could not delete draft photo from Cloudinary:', e);
+      }
     }
   };
 
-  // Remove Photo from Hoarding
+  // Remove Photo from Hoarding (Deletes from Cloudinary if not cover photo)
   const handleRemovePhoto = async (indexToRemove) => {
-    const updatedPhotos = photoManagerModal.photos.filter((_, idx) => idx !== indexToRemove);
-    setPhotoManagerModal((prev) => ({ ...prev, photos: updatedPhotos }));
+    const photoUrl = photoManagerModal.photos[indexToRemove];
+    if (indexToRemove === 0) {
+      showToast('Cover photo cannot be deleted directly. Please click "Request Cover Pic Delete".', 'error');
+      return;
+    }
 
     try {
-      await api.put(`/hoardings/${photoManagerModal._id}`, { photos: updatedPhotos });
-      setHoardings((prev) =>
-        prev.map((h) => (h._id === photoManagerModal._id ? { ...h, photos: updatedPhotos } : h))
-      );
-      showToast('Photo removed.');
+      const res = await api.delete(`/hoardings/${photoManagerModal._id}/photos`, {
+        data: { photoUrl }
+      });
+      if (res.data.success) {
+        const updatedPhotos = res.data.photos || photoManagerModal.photos.filter((_, idx) => idx !== indexToRemove);
+        setPhotoManagerModal((prev) => ({ ...prev, photos: updatedPhotos }));
+        setHoardings((prev) =>
+          prev.map((h) => (h._id === photoManagerModal._id ? { ...h, photos: updatedPhotos } : h))
+        );
+        showToast('Photo permanently deleted from Cloudinary and gallery.');
+      }
     } catch (err) {
-      showToast('Failed to remove photo.', 'error');
+      showToast(err.response?.data?.message || 'Failed to remove photo.', 'error');
+    }
+  };
+
+  // State & handler for Cover Photo Deletion Request (Admin approval workflow)
+  const [requestCoverModal, setRequestCoverModal] = useState(null);
+  const [requestCoverReason, setRequestCoverReason] = useState('');
+  const [requestCoverLoading, setRequestCoverLoading] = useState(false);
+
+  const handleRequestCoverDelete = async (e) => {
+    e.preventDefault();
+    if (!requestCoverModal) return;
+
+    setRequestCoverLoading(true);
+    try {
+      const res = await api.post(`/hoardings/${requestCoverModal.hoardingId}/request-cover-delete`, {
+        reason: requestCoverReason.trim() || 'Media owner requested removal of cover picture'
+      });
+      if (res.data.success) {
+        const updatedRequest = res.data.coverPhotoDeletionRequest;
+        setPhotoManagerModal((prev) =>
+          prev ? { ...prev, coverPhotoDeletionRequest: updatedRequest } : null
+        );
+        setHoardings((prev) =>
+          prev.map((h) =>
+            h._id === requestCoverModal.hoardingId
+              ? { ...h, coverPhotoDeletionRequest: updatedRequest }
+              : h
+          )
+        );
+        showToast('Cover photo deletion request sent to Super Admin for approval!');
+        setRequestCoverModal(null);
+        setRequestCoverReason('');
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to submit cover deletion request.', 'error');
+    } finally {
+      setRequestCoverLoading(false);
     }
   };
 
@@ -1882,6 +1925,7 @@ export default function SellerDashboardPage() {
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="file"
+                  multiple
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                   accept="image/*"
@@ -1898,7 +1942,7 @@ export default function SellerDashboardPage() {
                   ) : (
                     <Upload className="w-4 h-4" />
                   )}
-                  <span>{uploadLoading ? 'Uploading...' : 'Upload Photo from Device'}</span>
+                  <span>{uploadLoading ? 'Uploading to Cloudinary...' : 'Upload Photos from Device (Multiple Allowed)'}</span>
                 </button>
               </div>
 
@@ -1940,31 +1984,65 @@ export default function SellerDashboardPage() {
                     >
                       <img src={url} alt={`Site photo ${idx + 1}`} className="w-full h-full object-cover" />
 
-                      {/* Primary Cover Badge */}
+                      {/* Primary Cover Badge & Status */}
                       {idx === 0 && (
-                        <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded text-[10px] font-black bg-indigo-600 text-white shadow-xs">
-                          Cover
-                        </span>
+                        <div className="absolute top-1.5 left-1.5 flex flex-col gap-1 items-start z-10">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-600 text-white shadow-xs">
+                            Cover
+                          </span>
+                          {photoManagerModal.coverPhotoDeletionRequest?.status === 'pending' && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-500 text-white shadow-xs flex items-center gap-0.5">
+                              <Clock className="w-2.5 h-2.5 animate-pulse" /> Deletion Pending Admin
+                            </span>
+                          )}
+                        </div>
                       )}
 
                       {/* Overlay action buttons */}
-                      <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
-                        {idx !== 0 && (
-                          <button
-                            onClick={() => handleSetPrimaryPhoto(idx)}
-                            className="p-1.5 bg-white text-indigo-600 rounded-lg hover:bg-indigo-50 text-[10px] font-bold"
-                            title="Set as Cover Photo"
-                          >
-                            Set Cover
-                          </button>
+                      <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 p-1.5 text-center">
+                        {idx !== 0 ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleSetPrimaryPhoto(idx)}
+                              className="px-2 py-1 bg-white text-indigo-600 rounded-lg hover:bg-indigo-50 text-[10px] font-bold shadow-xs transition"
+                              title="Set as Cover Photo"
+                            >
+                              Set Cover
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePhoto(idx)}
+                              className="px-2 py-1 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition shadow-xs flex items-center gap-1 text-[10px] font-bold"
+                              title="Permanently Delete Photo from Cloudinary"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Delete</span>
+                            </button>
+                          </>
+                        ) : (
+                          // COVER PHOTO: Cannot delete directly, request admin removal
+                          photoManagerModal.coverPhotoDeletionRequest?.status === 'pending' ? (
+                            <div className="px-2 py-1 bg-amber-600 text-white rounded-lg text-[9px] font-black shadow-xs">
+                              ⏳ Deletion Pending Admin
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setRequestCoverModal({
+                                  hoardingId: photoManagerModal._id,
+                                  photoUrl: url
+                                })
+                              }
+                              className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[9px] font-black shadow-xs transition flex items-center gap-1"
+                              title="Request Super Admin to Delete Cover Photo"
+                            >
+                              <ShieldAlert className="w-3 h-3" />
+                              <span>Request Cover Delete</span>
+                            </button>
+                          )
                         )}
-                        <button
-                          onClick={() => handleRemovePhoto(idx)}
-                          className="p-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition"
-                          title="Delete Photo"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </div>
                     </div>
                   ))}
@@ -1981,6 +2059,82 @@ export default function SellerDashboardPage() {
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: REQUEST COVER PHOTO DELETION (SUPER ADMIN ACTION) */}
+      {/* ============================================================== */}
+      {requestCoverModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setRequestCoverModal(null)}
+              className="absolute right-5 top-5 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 uppercase">
+                Admin Review Required
+              </span>
+            </div>
+            <h3 className="text-lg font-black text-slate-900">Request Cover Photo Deletion</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Cover photos represent active listings on the Adverse marketplace. To protect platform integrity, deleting a cover photo requires Super Admin review.
+            </p>
+
+            <div className="my-4 p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center gap-3">
+              <img
+                src={requestCoverModal.photoUrl}
+                alt="Cover photo preview"
+                className="w-16 h-14 object-cover rounded-xl border border-slate-200 shadow-2xs shrink-0"
+              />
+              <div className="text-xs text-slate-600">
+                <span className="font-bold text-slate-900 block">Current Cover Picture</span>
+                <span className="text-[10px] text-slate-400">If approved by admin, this image will be permanently deleted from Cloudinary.</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleRequestCoverDelete} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reason for Deletion Request *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="e.g., Hoarding structure has been repainted / billboard frame redesigned / new HD daytime photography available..."
+                  value={requestCoverReason}
+                  onChange={(e) => setRequestCoverReason(e.target.value)}
+                  className="w-full border border-slate-200 p-2.5 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRequestCoverModal(null)}
+                  className="px-4 py-2 border rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={requestCoverLoading}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5"
+                >
+                  {requestCoverLoading ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                  )}
+                  <span>{requestCoverLoading ? 'Submitting...' : 'Submit Request to Admin'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -311,6 +311,12 @@ export default function SellerDashboardScreen({ navigation }) {
   const [showMapPickerModal, setShowMapPickerModal] = useState(false);
   const [showProofModal, setShowProofModal] = useState(false);
 
+  // Photo Gallery Manager & Cover Deletion Request Modals
+  const [photoManagerHoarding, setPhotoManagerHoarding] = useState(null);
+  const [uploadingGalleryImage, setUploadingGalleryImage] = useState(false);
+  const [requestCoverModal, setRequestCoverModal] = useState({ visible: false, hoardingId: null, reason: '' });
+  const [submittingCoverRequest, setSubmittingCoverRequest] = useState(false);
+
   // Proof Modal Form
   const [selectedBookingForProof, setSelectedBookingForProof] = useState(null);
   const [proofForm, setProofForm] = useState({
@@ -626,7 +632,7 @@ export default function SellerDashboardScreen({ navigation }) {
     }
   };
 
-  // Pick or Capture Hoarding Photo for Enlistment via Cloudinary
+  // Pick or Capture Hoarding Photo for Enlistment via Cloudinary (Supports multiple selection)
   const handlePickHoardingImage = async (useCamera = false) => {
     try {
       if (useCamera) {
@@ -652,28 +658,40 @@ export default function SellerDashboardScreen({ navigation }) {
           })
         : await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [16, 9],
+            allowsMultipleSelection: true,
+            selectionLimit: 5,
             quality: 0.8,
             base64: true
           });
 
-      if (!result.canceled && result.assets && result.assets[0]?.base64) {
+      if (!result.canceled && result.assets && result.assets.length > 0) {
         setUploadingHoardingImage(true);
-        const base64Data = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        const res = await mobileApi.post('/upload/base64', {
-          image: base64Data,
-          folder: 'adverse/hoardings'
-        });
+        const uploadedUrls = [];
 
-        if (res.data?.success && res.data?.fileUrl) {
+        for (const asset of result.assets) {
+          if (asset.base64) {
+            try {
+              const res = await mobileApi.post('/upload/base64', {
+                image: `data:image/jpeg;base64,${asset.base64}`,
+                folder: 'adverse/hoardings'
+              });
+              if (res.data?.success && res.data?.fileUrl) {
+                uploadedUrls.push(res.data.fileUrl);
+              }
+            } catch (err) {
+              console.warn('Single photo upload failed:', err);
+            }
+          }
+        }
+
+        if (uploadedUrls.length > 0) {
           setNewHoarding(prev => ({
             ...prev,
-            photos: [...(prev.photos || []), res.data.fileUrl]
+            photos: [...(prev.photos || []), ...uploadedUrls]
           }));
-          Alert.alert('Photo Uploaded! ☁️', 'Hoarding image uploaded to Cloudinary CDN.');
+          Alert.alert('Photos Uploaded! ☁️', `${uploadedUrls.length} image(s) uploaded to Cloudinary CDN.`);
         } else {
-          Alert.alert('Upload Failed', res.data?.message || 'Could not upload photo.');
+          Alert.alert('Upload Failed', 'Could not upload selected photos.');
         }
       }
     } catch (err) {
@@ -684,11 +702,190 @@ export default function SellerDashboardScreen({ navigation }) {
     }
   };
 
-  const handleRemoveHoardingPhoto = (indexToRemove) => {
+  // Remove photo from draft (Also deletes from Cloudinary)
+  const handleRemoveHoardingPhoto = async (indexToRemove) => {
+    const photoToRemove = newHoarding.photos?.[indexToRemove];
+    if (photoToRemove) {
+      try {
+        await mobileApi.delete('/upload', { data: { url: photoToRemove } });
+      } catch (err) {
+        console.warn('Failed to delete draft photo from Cloudinary:', err);
+      }
+    }
     setNewHoarding(prev => ({
       ...prev,
       photos: (prev.photos || []).filter((_, idx) => idx !== indexToRemove)
     }));
+  };
+
+  // Pick or Capture Photo for Existing Hoarding Gallery via Cloudinary
+  const handlePickGalleryImage = async (useCamera = false) => {
+    if (!photoManagerHoarding) return;
+    try {
+      if (useCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera permission is required.');
+          return;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Gallery access is required.');
+          return;
+        }
+      }
+
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [16, 9],
+            quality: 0.8,
+            base64: true
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsMultipleSelection: true,
+            selectionLimit: 5,
+            quality: 0.8,
+            base64: true
+          });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setUploadingGalleryImage(true);
+        const uploadedUrls = [];
+
+        for (const asset of result.assets) {
+          if (asset.base64) {
+            try {
+              const res = await mobileApi.post('/upload/base64', {
+                image: `data:image/jpeg;base64,${asset.base64}`,
+                folder: 'adverse/hoardings'
+              });
+              if (res.data?.success && res.data?.fileUrl) {
+                uploadedUrls.push(res.data.fileUrl);
+              }
+            } catch (err) {
+              console.warn('Gallery upload failed:', err);
+            }
+          }
+        }
+
+        if (uploadedUrls.length > 0) {
+          const updatedPhotos = [...(photoManagerHoarding.photos || []), ...uploadedUrls];
+          await mobileApi.put(`/hoardings/${photoManagerHoarding._id}`, { photos: updatedPhotos });
+
+          setPhotoManagerHoarding(prev => ({ ...prev, photos: updatedPhotos }));
+          fetchSellerData();
+          Alert.alert('Success! ☁️', `${uploadedUrls.length} photo(s) added to gallery and synced with Cloudinary.`);
+        }
+      }
+    } catch (err) {
+      Alert.alert('Upload Error', err.response?.data?.message || err.message || 'Failed to upload photo.');
+    } finally {
+      setUploadingGalleryImage(false);
+    }
+  };
+
+  // Remove Photo from Existing Hoarding Gallery (Permanently deletes from Cloudinary)
+  const handleRemoveExistingPhoto = async (indexToRemove) => {
+    if (!photoManagerHoarding) return;
+    const photoUrl = photoManagerHoarding.photos?.[indexToRemove];
+    if (!photoUrl) return;
+
+    // RULE: Cover photo (index 0) cannot be deleted directly
+    if (indexToRemove === 0) {
+      Alert.alert(
+        'Cover Photo Protected 🛡️',
+        'The primary Cover Photo cannot be deleted directly. Please tap "Request Cover Pic Delete" for Super Admin approval.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Request Delete',
+            onPress: () => {
+              setRequestCoverModal({
+                visible: true,
+                hoardingId: photoManagerHoarding._id,
+                reason: ''
+              });
+            }
+          }
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Delete Photo?',
+      'Are you sure you want to permanently delete this photo? It will be deleted from your gallery and from Cloudinary cloud storage.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await mobileApi.delete(`/hoardings/${photoManagerHoarding._id}/photos`, {
+                data: { photoUrl }
+              });
+
+              const newPhotos = res.data?.photos || photoManagerHoarding.photos.filter((_, idx) => idx !== indexToRemove);
+              setPhotoManagerHoarding(prev => ({ ...prev, photos: newPhotos }));
+              fetchSellerData();
+              Alert.alert('Deleted! 🗑️', 'Photo successfully deleted from Cloudinary storage.');
+            } catch (err) {
+              Alert.alert('Delete Failed', err.response?.data?.message || 'Failed to delete photo.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Reorder photo to Cover (index 0)
+  const handleSetCoverPhoto = async (indexToPromote) => {
+    if (!photoManagerHoarding || indexToPromote === 0) return;
+    try {
+      const photos = [...photoManagerHoarding.photos];
+      const [promoted] = photos.splice(indexToPromote, 1);
+      photos.unshift(promoted);
+
+      await mobileApi.put(`/hoardings/${photoManagerHoarding._id}`, { photos });
+      setPhotoManagerHoarding(prev => ({ ...prev, photos }));
+      fetchSellerData();
+      Alert.alert('Cover Updated', 'This photo is now set as the primary cover picture.');
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to update cover photo.');
+    }
+  };
+
+  // Submit request to delete cover photo to Super Admin
+  const handleSubmitCoverDeleteRequest = async () => {
+    if (!requestCoverModal.hoardingId) return;
+    setSubmittingCoverRequest(true);
+    try {
+      const res = await mobileApi.post(`/hoardings/${requestCoverModal.hoardingId}/request-cover-delete`, {
+        reason: requestCoverModal.reason.trim() || 'Media owner requested removal of cover picture'
+      });
+
+      Alert.alert(
+        'Request Sent to Super Admin 🛡️',
+        'Your request to delete the cover photo has been submitted. The Super Admin will review it and delete the image from Cloudinary upon approval.'
+      );
+
+      setRequestCoverModal({ visible: false, hoardingId: null, reason: '' });
+      if (photoManagerHoarding && photoManagerHoarding._id === requestCoverModal.hoardingId) {
+        setPhotoManagerHoarding(prev => ({
+          ...prev,
+          coverPhotoDeletionRequest: res.data?.coverPhotoDeletionRequest || { status: 'pending' }
+        }));
+      }
+      fetchSellerData();
+    } catch (err) {
+      Alert.alert('Request Failed', err.response?.data?.message || 'Failed to submit cover deletion request.');
+    } finally {
+      setSubmittingCoverRequest(false);
+    }
   };
 
   const handlePointPicked = (lat, lng) => {
@@ -740,9 +937,9 @@ export default function SellerDashboardScreen({ navigation }) {
           baseRatePerMonth: Number(newHoarding.baseRatePerMonth),
           baseRatePerDay: Math.round(Number(newHoarding.baseRatePerMonth) / 30)
         },
-        photos: [
-          'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80'
-        ]
+        photos: (newHoarding.photos && newHoarding.photos.length > 0)
+          ? newHoarding.photos
+          : ['https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80']
       });
 
       Alert.alert('Success! 🎉', 'New hoarding board enlisted.');
@@ -992,12 +1189,32 @@ export default function SellerDashboardScreen({ navigation }) {
                       <Text style={styles.inventoryTitle} numberOfLines={1}>{h.title}</Text>
                       <Text style={styles.inventoryAddress} numberOfLines={1}>{h.location?.address}</Text>
 
+                      {h.coverPhotoDeletionRequest?.status === 'pending' && (
+                        <View style={styles.pendingCoverPill}>
+                          <Ionicons name="time" size={11} color="#b45309" />
+                          <Text style={styles.pendingCoverPillText}>Cover Deletion Pending Admin</Text>
+                        </View>
+                      )}
+
                       <View style={styles.inventoryPriceRow}>
                         <Text style={styles.inventoryPrice}>
                           ₹{(h.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}/mo
                         </Text>
 
-                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          <TouchableOpacity
+                            onPress={() => setPhotoManagerHoarding(h)}
+                            style={styles.cardGalleryIconBtn}
+                          >
+                            <Ionicons name="images" size={13} color="#4f46e5" />
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: '#4f46e5' }}>
+                              Photos ({h.photos?.length || 0})
+                            </Text>
+                            {h.coverPhotoDeletionRequest?.status === 'pending' && (
+                              <View style={styles.pendingDot} />
+                            )}
+                          </TouchableOpacity>
+
                           {hasMaps && (
                             <TouchableOpacity
                               onPress={() => {
@@ -1633,6 +1850,218 @@ export default function SellerDashboardScreen({ navigation }) {
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
+      </Modal>
+
+      {/* ============================================================== */}
+      {/* HOARDING PHOTO GALLERY MANAGER MODAL */}
+      {/* ============================================================== */}
+      <Modal visible={!!photoManagerHoarding} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+          <View style={styles.modalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalHeading}>Hoarding Site Gallery</Text>
+              <Text style={styles.modalSubheading} numberOfLines={1}>
+                {photoManagerHoarding?.title || 'Manage Photos'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setPhotoManagerHoarding(null)}>
+              <Ionicons name="close" size={24} color="#0f172a" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ padding: 16 }}>
+            {/* Cloudinary Add Photos Box */}
+            <View style={[styles.cloudUploadBox, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', marginBottom: 16 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="cloud-upload" size={16} color="#2563eb" />
+                  <Text style={[styles.cloudUploadTitle, { color: '#1e40af' }]}>Add More Photos to Site</Text>
+                </View>
+                <View style={[styles.cloudUploadBadge, { backgroundColor: '#dbeafe' }]}>
+                  <Text style={[styles.cloudUploadBadgeText, { color: '#1d4ed8' }]}>Cloudinary CDN</Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => handlePickGalleryImage(true)}
+                  disabled={uploadingGalleryImage}
+                  style={[styles.cloudPickerBtn, { backgroundColor: '#2563eb' }]}
+                >
+                  {uploadingGalleryImage ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="camera" size={16} color="#fff" />
+                  )}
+                  <Text style={styles.cloudPickerBtnText}>Take Photo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => handlePickGalleryImage(false)}
+                  disabled={uploadingGalleryImage}
+                  style={[styles.cloudPickerBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1' }]}
+                >
+                  <Ionicons name="image-outline" size={16} color="#334155" />
+                  <Text style={[styles.cloudPickerBtnText, { color: '#334155' }]}>From Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Photos List */}
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b', marginBottom: 10 }}>
+              Current Gallery Images ({photoManagerHoarding?.photos?.length || 0})
+            </Text>
+
+            {(!photoManagerHoarding?.photos || photoManagerHoarding.photos.length === 0) ? (
+              <View style={{ backgroundColor: '#fff', padding: 24, borderRadius: 16, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' }}>
+                <Ionicons name="images-outline" size={36} color="#94a3b8" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#64748b', marginTop: 8 }}>
+                  No photos uploaded for this hoarding.
+                </Text>
+              </View>
+            ) : (
+              photoManagerHoarding.photos.map((url, idx) => {
+                const isCover = idx === 0;
+                const isPendingCoverDelete = isCover && photoManagerHoarding.coverPhotoDeletionRequest?.status === 'pending';
+
+                return (
+                  <View key={idx} style={styles.galleryItemCard}>
+                    <Image source={{ uri: url }} style={styles.galleryItemImage} />
+
+                    <View style={styles.galleryItemContent}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        {isCover ? (
+                          <View style={styles.coverBadgePill}>
+                            <Ionicons name="star" size={10} color="#fff" />
+                            <Text style={styles.coverBadgePillText}>Primary Cover Photo</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.photoIndexPill}>
+                            <Text style={styles.photoIndexPillText}>Photo #{idx + 1}</Text>
+                          </View>
+                        )}
+
+                        {isPendingCoverDelete && (
+                          <View style={styles.pendingDeletionPill}>
+                            <Ionicons name="time" size={10} color="#92400e" />
+                            <Text style={styles.pendingDeletionPillText}>Pending Admin</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {isCover && (
+                        <Text style={{ fontSize: 10, color: '#64748b', marginBottom: 8 }}>
+                          {isPendingCoverDelete
+                            ? 'Admin approval is pending to delete this cover photo from Cloudinary.'
+                            : 'Cover photo is protected from direct deletion to maintain listing integrity.'}
+                        </Text>
+                      )}
+
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
+                        {isCover ? (
+                          isPendingCoverDelete ? (
+                            <View style={styles.pendingActionPill}>
+                              <Text style={styles.pendingActionPillText}>⏳ Deletion Pending Admin</Text>
+                            </View>
+                          ) : (
+                            <TouchableOpacity
+                              onPress={() => {
+                                setRequestCoverModal({
+                                  visible: true,
+                                  hoardingId: photoManagerHoarding._id,
+                                  reason: ''
+                                });
+                              }}
+                              style={styles.requestCoverBtn}
+                            >
+                              <Ionicons name="shield-outline" size={13} color="#d97706" />
+                              <Text style={styles.requestCoverBtnText}>Request Cover Pic Delete</Text>
+                            </TouchableOpacity>
+                          )
+                        ) : (
+                          <>
+                            <TouchableOpacity
+                              onPress={() => handleSetCoverPhoto(idx)}
+                              style={styles.setCoverBtn}
+                            >
+                              <Ionicons name="star-outline" size={13} color="#4338ca" />
+                              <Text style={styles.setCoverBtnText}>Set as Cover</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleRemoveExistingPhoto(idx)}
+                              style={styles.deletePhotoBtn}
+                            >
+                              <Ionicons name="trash-outline" size={13} color="#e11d48" />
+                              <Text style={styles.deletePhotoBtnText}>Delete (Cloudinary)</Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+
+            <TouchableOpacity
+              onPress={() => setPhotoManagerHoarding(null)}
+              style={[styles.submitModalBtn, { backgroundColor: '#0f172a', marginTop: 20 }]}
+            >
+              <Text style={styles.submitModalBtnText}>Done</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ============================================================== */}
+      {/* REQUEST COVER PHOTO DELETION MODAL */}
+      {/* ============================================================== */}
+      <Modal visible={requestCoverModal.visible} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.requestCoverModalCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <View style={styles.shieldIconWrap}>
+                <Ionicons name="shield-checkmark" size={18} color="#d97706" />
+              </View>
+              <Text style={styles.requestCoverTitle}>Request Cover Photo Deletion</Text>
+            </View>
+
+            <Text style={styles.requestCoverSub}>
+              To prevent accidental deletion or broken listings, removing a site's primary cover image requires Super Admin approval. Approving will also destroy the image on Cloudinary.
+            </Text>
+
+            <Text style={[styles.inputLabel, { marginTop: 12 }]}>Reason for Deletion (Optional):</Text>
+            <TextInput
+              style={[styles.input, { height: 75, textAlignVertical: 'top' }]}
+              placeholder="e.g., Billboard renovated, replacing with fresh high-res daytime photo, banner updated..."
+              multiline
+              value={requestCoverModal.reason}
+              onChangeText={t => setRequestCoverModal(p => ({ ...p, reason: t }))}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                onPress={() => setRequestCoverModal({ visible: false, hoardingId: null, reason: '' })}
+                style={styles.modalCancelBtn}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleSubmitCoverDeleteRequest}
+                disabled={submittingCoverRequest}
+                style={styles.modalSubmitRequestBtn}
+              >
+                {submittingCoverRequest ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalSubmitRequestBtnText}>Submit to Admin</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -2734,5 +3163,227 @@ const styles = StyleSheet.create({
     height: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pendingCoverPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  pendingCoverPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  cardGalleryIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  pendingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#f59e0b',
+  },
+  galleryItemCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 10,
+    marginBottom: 10,
+    gap: 12,
+  },
+  galleryItemImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+  },
+  galleryItemContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  coverBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  coverBadgePillText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  photoIndexPill: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  photoIndexPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  pendingDeletionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  pendingDeletionPillText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  pendingActionPill: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  pendingActionPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#b45309',
+  },
+  requestCoverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+  },
+  requestCoverBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#b45309',
+  },
+  setCoverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  setCoverBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#4338ca',
+  },
+  deletePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff1f2',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+  },
+  deletePhotoBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#e11d48',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  requestCoverModalCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  shieldIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestCoverTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#0f172a',
+    flex: 1,
+  },
+  requestCoverSub: {
+    fontSize: 11,
+    color: '#64748b',
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  modalSubmitRequestBtn: {
+    flex: 1.5,
+    backgroundColor: '#d97706',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSubmitRequestBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#fff',
   },
 });

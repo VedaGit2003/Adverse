@@ -9,7 +9,9 @@ const {
   updateHoardingStatus,
   deleteHoarding,
   getMyHoardings,
-  getWBLocations
+  getWBLocations,
+  deleteHoardingPhoto,
+  requestCoverPhotoDelete
 } = require('./hoarding.controller');
 const { verifyToken, authorizeRoles, requireApprovedSeller } = require('../../middlewares/auth.middleware');
 
@@ -23,5 +25,7 @@ router.post('/', verifyToken, authorizeRoles('seller', 'admin'), requireApproved
 router.put('/:id', verifyToken, authorizeRoles('seller', 'admin'), updateHoarding);
 router.put('/:id/status', verifyToken, authorizeRoles('seller', 'admin'), updateHoardingStatus);
 router.delete('/:id', verifyToken, authorizeRoles('seller', 'admin'), deleteHoarding);
+router.delete('/:id/photos', verifyToken, authorizeRoles('seller', 'admin'), deleteHoardingPhoto);
+router.post('/:id/request-cover-delete', verifyToken, authorizeRoles('seller', 'admin'), requestCoverPhotoDelete);
 
 module.exports = router;

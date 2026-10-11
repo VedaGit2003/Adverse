@@ -44,6 +44,8 @@ This document is designed to teach you the system architecture, file structure, 
    - [Credentials & Environment Configuration](#credentials--environment-configuration)
    - [Core Backend Utility Engine](#core-backend-utility-engine-serversrcutilscloudinaryjs)
    - [Centralized Upload Endpoints](#centralized-upload-endpoints-serversrcmodulesuploaduploadroutesjs)
+   - [Gallery Synchronization & Permanent Cloud Deletions](#gallery-synchronization--permanent-cloud-deletions)
+   - [Cover Photo Protection & Super Admin Moderation Workflow](#cover-photo-protection--super-admin-moderation-workflow)
    - [Web Client Integration](#web-client-integration-client-web)
    - [Mobile Client Integration](#mobile-client-integration-client-mobile)
 
@@ -633,37 +635,112 @@ Exported cleanly in `server/src/config/env.js` and loaded dynamically by `cloudi
 2. **`uploadDataUriToCloudinary(dataUri, options)`**:
    - Designed specifically for React Native / Expo mobile camera captures where base64 data URIs (`data:image/jpeg;base64,...`) are transmitted.
    - Saves base64 strings directly to Cloudinary folder destinations (`adverse/mounting_proofs`, `adverse/hoardings`).
+3. **`getPublicIdFromUrl(url)`**:
+   - Robustly parses Cloudinary CDN URLs (e.g. `https://res.cloudinary.com/dsdpnz2xz/image/upload/v172866/adverse/hoardings/ys5llbp.jpg`).
+   - Extracts the clean Cloudinary public ID (e.g. `adverse/hoardings/ys5llbp`), stripping version prefixes and file extensions.
+4. **`deleteFromCloudinary(publicIdOrUrl)`**:
+   - Executes permanent asset deletion on Cloudinary via `cloudinary.uploader.destroy(publicId)`.
+   - Safely skips local upload assets or non-Cloudinary images with zero errors.
 
-### Centralized Upload Endpoints (`server/src/modules/upload/upload.routes.js`)
+### Centralized Upload & Deletion Endpoints (`server/src/modules/upload/upload.routes.js`)
 
 | Endpoint | Method | Format | Description |
 |---|:---:|:---:|---|
 | `/api/upload/single` | `POST` | `multipart/form-data` | Uploads a single image buffer to Cloudinary CDN (accepts `?folder=...` query param). |
 | `/api/upload/multiple` | `POST` | `multipart/form-data` | Batch-uploads up to 10 images concurrently to Cloudinary CDN. |
 | `/api/upload/base64` | `POST` | `application/json` | Uploads base64 camera snapshot strings directly to Cloudinary CDN. |
+| `/api/upload` | `DELETE` | `application/json` | Destroys an uploaded asset from Cloudinary CDN using `{ url }` (used for draft cleanup). |
+
+### Gallery Synchronization & Permanent Cloud Deletions
+
+To prevent orphaned assets and recurring storage bloat on Cloudinary, photo deletions are synchronized between the database and Cloudinary storage:
+
+1. **Non-Cover Photo Deletion (`DELETE /api/hoardings/:id/photos`):**
+   - Media owners can delete any auxiliary photo (`photos[idx]` where `idx > 0`).
+   - The backend immediately executes `deleteFromCloudinary(photoUrl)` and pulls the URL from the hoarding document's `photos` array.
+2. **Draft Cleanup:**
+   - When a seller uploads photos during the "Enlist Hoarding" workflow and subsequently removes a thumbnail before submitting, the frontend calls `DELETE /api/upload` with the URL, preventing unused drafts from remaining stored on Cloudinary.
+
+### Cover Photo Protection & Super Admin Moderation Workflow
+
+The primary cover photo (`photos[0]`) serves as the listing's principal identity across search, map pins, and booking cards. To protect listing integrity and prevent broken views:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Seller as Media Owner (Seller)
+    participant Server as Backend API (/api/hoardings)
+    participant DB as MongoDB (Hoarding Model)
+    actor Admin as Super Admin Console
+    participant Cloud as Cloudinary CDN
+
+    Seller->>Server: Attempt DELETE /photos (idx 0)
+    Server-->>Seller: 403 Forbidden (Cover photo protected)
+
+    Seller->>Server: POST /hoardings/:id/request-cover-delete { reason }
+    Server->>DB: Save coverPhotoDeletionRequest { status: 'pending', photoUrl, reason, requestedAt }
+    Server-->>Seller: 200 OK (Request sent to Super Admin)
+
+    Admin->>Server: GET /api/admin/cover-deletion-requests
+    Server-->>Admin: Returns hoardings with pending cover requests
+
+    alt Super Admin Approves
+        Admin->>Server: PUT /api/admin/cover-deletion-requests/:id { action: 'approve' }
+        Server->>Cloud: cloudinary.uploader.destroy(coverPublicId)
+        Server->>DB: Pull photo from photos array, set status 'approved'
+        Server-->>Admin: Cover photo deleted & removed from listing
+    else Super Admin Rejects
+        Admin->>Server: PUT /api/admin/cover-deletion-requests/:id { action: 'reject' }
+        Server->>DB: Set coverPhotoDeletionRequest.status = 'rejected'
+        Server-->>Admin: Request rejected (Photo retained)
+    end
+```
+
+#### Hoarding Model Schema Extension:
+```javascript
+coverPhotoDeletionRequest: {
+  status: {
+    type: String,
+    enum: ['none', 'pending', 'approved', 'rejected'],
+    default: 'none'
+  },
+  photoUrl: { type: String, default: '' },
+  reason: { type: String, default: '' },
+  requestedAt: { type: Date },
+  reviewedAt: { type: Date },
+  adminNotes: { type: Date }
+}
+```
 
 ### Web Client Integration (`client-web`)
 
-1. **Seller Dashboard Enlistment Modal (`SellerDashboardPage.jsx`):**
-   - Direct file picker button `Upload Photos from Device` with Cloudinary CDN tag.
-   - Posts selected files to `/api/upload/single?folder=adverse/hoardings`.
-   - Live thumbnail preview strip with instant cover-photo badge and delete (`X`) buttons.
-2. **Mounting Tracker (`MountingTracker.jsx`):**
-   - Integrated in Phase 3 proof submission form with `Select Photo from Device` button.
-   - Uploads to `adverse/mounting_proofs` folder.
-   - Instantly renders high-resolution proof thumbnail with a verified `Photo Ready (Cloudinary)` tag and auto-fills the capture timestamp.
+1. **Seller Dashboard Photo Management (`SellerDashboardPage.jsx`):**
+   - **Multiple Uploads:** HTML5 `<input type="file" multiple />` allows media owners to select and batch-upload multiple site photos to Cloudinary.
+   - **Interactive Gallery Modal:** Renders all site photos with distinct badges for "Cover Photo" and thumbnail numbers.
+   - **Cover Photo Protection:** Direct deletion is blocked for index 0. Replaced with an amber **"Request Cover Pic Delete"** button that prompts the seller for a justification note.
+   - **Live Pending Badge:** Displays `⏳ Deletion Pending Admin` when a deletion request is awaiting moderation.
+   - **One-Click Reordering:** Sellers can click **"Set Cover"** on any secondary photo to elevate it to index 0 without needing admin approval.
+2. **Super Admin Console Moderation (`AdminDashboardPage.jsx`):**
+   - **Dedicated Moderation Tab:** "Cover Photo Requests" tab with real-time pending count badge.
+   - **Audit View:** Displays the cover photo preview, hoarding title, location, media owner agency name, and seller's justification note.
+   - **Actions:**
+     - **Approve & Delete from Cloudinary:** Permanently destroys the asset via Cloudinary API and removes it from the hoarding.
+     - **Reject Request:** Dismisses the request while keeping the cover photo safe and active.
 
 ### Mobile Client Integration (`client-mobile`)
 
-1. **Seller Dashboard Mounting Proof Modal (`SellerDashboardScreen.js`):**
-   - Directly triggers `expo-image-picker`:
-     - **📷 Take Photo:** Launches native device camera with crop/aspect ratio guides.
-     - **🖼️ From Gallery:** Launches system photo picker.
-   - Encodes image with `base64: true` and posts to `/api/upload/base64` with `folder: 'adverse/mounting_proofs'`.
-   - Displays live photo preview overlaying date and time stamp.
-2. **Seller Dashboard Hoarding Enlistment Modal (`SellerDashboardScreen.js`):**
-   - Allows sellers on-site to snap photos of their new billboard structures or pick from their gallery.
-   - Uploads to `adverse/hoardings` and renders a horizontal thumbnail carousel with cover indicators and remove buttons before publishing to the marketplace.
+1. **Enlist Hoarding Screen (`SellerDashboardScreen.js`):**
+   - Supports multi-image selection (`allowsMultipleSelection: true`) via `expo-image-picker`.
+   - Iterates through selected assets, uploads each to Cloudinary via `/api/upload/base64`, and renders a thumbnail preview row.
+   - Removing draft thumbnails triggers `DELETE /api/upload` to clean up Cloudinary storage.
+2. **Site Gallery Manager (`SellerDashboardScreen.js`):**
+   - Each inventory card features a **"Photos (N)"** button with a notification dot if a cover deletion request is pending.
+   - Tapping opens the full-screen Hoarding Site Gallery modal:
+     - Allows capturing camera photos or selecting from gallery to add to the live site.
+     - For non-cover photos (`idx > 0`): provides **"Set as Cover"** and **"Delete (Cloudinary)"** buttons.
+     - For cover photos (`idx === 0`): blocks direct deletion and renders **"Request Cover Pic Delete"**, opening a reason modal that posts to `/api/hoardings/:id/request-cover-delete`.
+3. **Mounting Proof Modal (`SellerDashboardScreen.js`):**
+   - Captures installation proof with native camera or gallery selection and uploads to `adverse/mounting_proofs`.
 
 
 

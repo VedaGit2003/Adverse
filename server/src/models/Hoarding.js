@@ -67,6 +67,19 @@ const HoardingSchema = new mongoose.Schema(
       type: [String],
       default: []
     },
+    coverPhotoDeletionRequest: {
+      status: {
+        type: String,
+        enum: ['none', 'pending', 'approved', 'rejected'],
+        default: 'none',
+        index: true
+      },
+      photoUrl: { type: String, default: '' },
+      reason: { type: String, default: '' },
+      requestedAt: { type: Date },
+      reviewedAt: { type: Date },
+      adminNotes: { type: String, default: '' }
+    },
     availabilityStatus: {
       type: String,
       enum: ['available', 'occupied', 'under_maintenance', 'inactive'],

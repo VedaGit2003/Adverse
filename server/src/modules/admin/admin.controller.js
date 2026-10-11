@@ -2,6 +2,7 @@ const User = require('../../models/User');
 const Hoarding = require('../../models/Hoarding');
 const Booking = require('../../models/Booking');
 const Payment = require('../../models/Payment');
+const { deleteFromCloudinary } = require('../../utils/cloudinary');
 
 /**
  * @desc    Get overall platform analytics & stats
@@ -331,6 +332,99 @@ exports.moderateSellerStatus = async (req, res, next) => {
       message: `Seller account status updated to '${status}'.`,
       seller
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get all pending cover photo deletion requests
+ * @route   GET /api/admin/cover-deletion-requests
+ * @access  Private (Admin only)
+ */
+exports.getCoverDeletionRequests = async (req, res, next) => {
+  try {
+    const hoardings = await Hoarding.find({
+      'coverPhotoDeletionRequest.status': 'pending'
+    })
+      .populate('sellerId', 'name email phone companyDetails')
+      .sort({ 'coverPhotoDeletionRequest.requestedAt': -1 });
+
+    res.status(200).json({
+      success: true,
+      count: hoardings.length,
+      requests: hoardings
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Approve or reject a cover photo deletion request
+ * @route   PUT /api/admin/cover-deletion-requests/:id
+ * @access  Private (Admin only)
+ */
+exports.moderateCoverDeletionRequest = async (req, res, next) => {
+  try {
+    const { action, adminNotes } = req.body; // 'approve' | 'reject'
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Action must be "approve" or "reject".'
+      });
+    }
+
+    const hoarding = await Hoarding.findById(req.params.id)
+      .populate('sellerId', 'name email phone companyDetails');
+
+    if (!hoarding) {
+      return res.status(404).json({ success: false, message: 'Hoarding not found.' });
+    }
+
+    if (hoarding.coverPhotoDeletionRequest?.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending cover photo deletion request for this hoarding.'
+      });
+    }
+
+    const targetPhoto = hoarding.coverPhotoDeletionRequest.photoUrl;
+
+    if (action === 'approve') {
+      // 1. Delete from Cloudinary
+      if (targetPhoto) {
+        await deleteFromCloudinary(targetPhoto);
+      }
+      // 2. Remove the photo from hoarding photos array
+      hoarding.photos = (hoarding.photos || []).filter(p => p !== targetPhoto);
+
+      // 3. Mark request as approved
+      hoarding.coverPhotoDeletionRequest.status = 'approved';
+      hoarding.coverPhotoDeletionRequest.reviewedAt = new Date();
+      hoarding.coverPhotoDeletionRequest.adminNotes = adminNotes || 'Approved by Super Admin.';
+
+      await hoarding.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Cover photo deletion request approved. Photo removed from Cloudinary and hoarding.',
+        hoarding
+      });
+    } else {
+      // Reject: keep photo, update status to rejected
+      hoarding.coverPhotoDeletionRequest.status = 'rejected';
+      hoarding.coverPhotoDeletionRequest.reviewedAt = new Date();
+      hoarding.coverPhotoDeletionRequest.adminNotes = adminNotes || 'Rejected by Super Admin.';
+
+      await hoarding.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Cover photo deletion request rejected. Cover photo retained.',
+        hoarding
+      });
+    }
   } catch (error) {
     next(error);
   }

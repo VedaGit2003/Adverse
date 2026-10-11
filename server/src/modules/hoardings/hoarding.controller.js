@@ -1,6 +1,7 @@
 const Hoarding = require('../../models/Hoarding');
 const Booking = require('../../models/Booking');
 const { resolveWBCoordinates, calculateDistanceKm, WB_CITIES } = require('../../utils/geo');
+const { deleteFromCloudinary } = require('../../utils/cloudinary');
 
 exports.getNearbyHoardings = async (req, res, next) => {
   try {
@@ -341,6 +342,110 @@ exports.getWBLocations = async (req, res, next) => {
   try {
     const { WB_REGIONS } = require('../../utils/geo');
     res.status(200).json({ success: true, regions: WB_REGIONS });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete a non-cover photo from hoarding gallery and Cloudinary
+ *          (Cover photo at index 0 is protected and requires admin request)
+ * @route   DELETE /api/hoardings/:id/photos
+ * @access  Private (Seller/Admin)
+ */
+exports.deleteHoardingPhoto = async (req, res, next) => {
+  try {
+    const { photoUrl } = req.body;
+    if (!photoUrl) {
+      return res.status(400).json({ success: false, message: 'Photo URL is required.' });
+    }
+
+    const hoarding = await Hoarding.findById(req.params.id);
+    if (!hoarding) {
+      return res.status(404).json({ success: false, message: 'Hoarding site not found.' });
+    }
+
+    // Authorization: owner seller or admin
+    if (hoarding.sellerId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized to modify this hoarding.' });
+    }
+
+    const photoIndex = hoarding.photos.indexOf(photoUrl);
+    if (photoIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Photo not found in this hoarding gallery.' });
+    }
+
+    // RULE: Cover photo (index 0) cannot be deleted directly by seller
+    if (photoIndex === 0 && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        isCoverPhoto: true,
+        message: 'The primary Cover Photo cannot be deleted directly. Please click "Request Cover Pic Delete" for Super Admin approval.'
+      });
+    }
+
+    // Delete photo from Cloudinary
+    await deleteFromCloudinary(photoUrl);
+
+    // Remove photo from array
+    hoarding.photos.splice(photoIndex, 1);
+    await hoarding.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Photo deleted from Cloudinary and removed from hoarding gallery.',
+      photos: hoarding.photos
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Request deletion of the primary cover photo (requires admin approval)
+ * @route   POST /api/hoardings/:id/request-cover-delete
+ * @access  Private (Seller/Admin)
+ */
+exports.requestCoverPhotoDelete = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const hoarding = await Hoarding.findById(req.params.id);
+    if (!hoarding) {
+      return res.status(404).json({ success: false, message: 'Hoarding site not found.' });
+    }
+
+    if (hoarding.sellerId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    }
+
+    if (!hoarding.photos || hoarding.photos.length === 0) {
+      return res.status(400).json({ success: false, message: 'Hoarding has no photos to delete.' });
+    }
+
+    const coverPhoto = hoarding.photos[0];
+
+    // Check if request is already pending
+    if (hoarding.coverPhotoDeletionRequest?.status === 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'A deletion request for this cover photo is already pending Super Admin review.'
+      });
+    }
+
+    hoarding.coverPhotoDeletionRequest = {
+      status: 'pending',
+      photoUrl: coverPhoto,
+      reason: reason || 'Media owner requested removal of cover picture.',
+      requestedAt: new Date()
+    };
+
+    await hoarding.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Cover photo deletion request submitted to Super Admin. You will be notified once reviewed.',
+      coverPhotoDeletionRequest: hoarding.coverPhotoDeletionRequest
+    });
   } catch (error) {
     next(error);
   }
