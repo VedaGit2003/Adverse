@@ -317,6 +317,10 @@ export default function SellerDashboardScreen({ navigation }) {
   const [requestCoverModal, setRequestCoverModal] = useState({ visible: false, hoardingId: null, reason: '' });
   const [submittingCoverRequest, setSubmittingCoverRequest] = useState(false);
 
+  // Edit Billboard & Price Modal
+  const [editHoardingModal, setEditHoardingModal] = useState(null);
+  const [savingEditHoarding, setSavingEditHoarding] = useState(false);
+
   // Proof Modal Form
   const [selectedBookingForProof, setSelectedBookingForProof] = useState(null);
   const [proofForm, setProofForm] = useState({
@@ -476,6 +480,77 @@ export default function SellerDashboardScreen({ navigation }) {
       Alert.alert('Status Updated', `Hoarding is now marked as ${nextStatus.toUpperCase()}`);
     } catch (err) {
       Alert.alert('Error', 'Failed to change status.');
+    }
+  };
+
+  // Open Edit Billboard & Price Modal (like web client)
+  const handleOpenEditModal = (hoarding) => {
+    setEditHoardingModal({
+      _id: hoarding._id,
+      title: hoarding.title || '',
+      description: hoarding.description || '',
+      hoardingType: hoarding.hoardingType || 'Billboard',
+      lightingType: hoarding.lightingType || 'Frontlit',
+      width: String(hoarding.dimensions?.width || '40'),
+      height: String(hoarding.dimensions?.height || '20'),
+      address: hoarding.location?.address || '',
+      city: hoarding.location?.city || 'Kolkata',
+      googleMapsUrl: hoarding.location?.googleMapsUrl || '',
+      baseRatePerMonth: String(hoarding.pricing?.baseRatePerMonth || ''),
+      baseRatePerDay: String(
+        hoarding.pricing?.baseRatePerDay ||
+        Math.round((hoarding.pricing?.baseRatePerMonth || 0) / 30) ||
+        ''
+      ),
+      minimumBookingDays: String(hoarding.pricing?.minimumBookingDays || '15'),
+      availabilityStatus: hoarding.availabilityStatus || 'available'
+    });
+  };
+
+  // Save Billboard Price & Specifications
+  const handleSaveHoardingEdit = async () => {
+    if (!editHoardingModal) return;
+    const monthly = Number(editHoardingModal.baseRatePerMonth);
+    if (!monthly || monthly <= 0) {
+      Alert.alert('Invalid Price', 'Please enter a valid monthly rental rate (₹).');
+      return;
+    }
+
+    setSavingEditHoarding(true);
+    try {
+      const payload = {
+        title: editHoardingModal.title,
+        description: editHoardingModal.description,
+        hoardingType: editHoardingModal.hoardingType,
+        lightingType: editHoardingModal.lightingType,
+        dimensions: {
+          width: Number(editHoardingModal.width) || 0,
+          height: Number(editHoardingModal.height) || 0,
+          unit: 'feet'
+        },
+        location: {
+          address: editHoardingModal.address,
+          city: editHoardingModal.city,
+          googleMapsUrl: editHoardingModal.googleMapsUrl || ''
+        },
+        pricing: {
+          baseRatePerMonth: monthly,
+          baseRatePerDay: Number(editHoardingModal.baseRatePerDay) || Math.round(monthly / 30),
+          minimumBookingDays: Number(editHoardingModal.minimumBookingDays) || 15
+        },
+        availabilityStatus: editHoardingModal.availabilityStatus
+      };
+
+      const res = await mobileApi.put(`/hoardings/${editHoardingModal._id}`, payload);
+      if (res.data?.success) {
+        Alert.alert('Billboard Updated! 🏷️', 'Billboard pricing and specifications updated successfully.');
+        setEditHoardingModal(null);
+        fetchSellerData();
+      }
+    } catch (err) {
+      Alert.alert('Update Failed', err.response?.data?.message || 'Failed to update billboard pricing.');
+    } finally {
+      setSavingEditHoarding(false);
     }
   };
 
@@ -1254,10 +1329,19 @@ export default function SellerDashboardScreen({ navigation }) {
                       <View style={styles.inventoryRateContainer}>
                         <View>
                           <Text style={styles.inventoryRateLabel}>MONTHLY TARIFF</Text>
-                          <Text style={styles.inventoryPrice}>
-                            ₹{(h.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}
-                            <Text style={styles.inventoryPriceSub}> / mo</Text>
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                            <Text style={styles.inventoryPrice}>
+                              ₹{(h.pricing?.baseRatePerMonth || 0).toLocaleString('en-IN')}
+                              <Text style={styles.inventoryPriceSub}> / mo</Text>
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => handleOpenEditModal(h)}
+                              style={styles.editPricePillBtn}
+                            >
+                              <Ionicons name="pencil" size={11} color="#4338ca" />
+                              <Text style={styles.editPricePillText}>Edit Price</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
                           <Text style={styles.inventoryInventoryNum}>
@@ -1277,7 +1361,7 @@ export default function SellerDashboardScreen({ navigation }) {
                         onPress={() => setPhotoManagerHoarding(h)}
                         style={styles.actionBtnPhotos}
                       >
-                        <Ionicons name="images" size={15} color="#4338ca" />
+                        <Ionicons name="images" size={14} color="#4338ca" />
                         <Text style={styles.actionBtnPhotosText}>
                           Photos ({h.photos?.length || 0})
                         </Text>
@@ -1286,7 +1370,16 @@ export default function SellerDashboardScreen({ navigation }) {
                         )}
                       </TouchableOpacity>
 
-                      {/* Button 2: Map Link (if available) */}
+                      {/* Button 2: Edit Board & Price */}
+                      <TouchableOpacity
+                        onPress={() => handleOpenEditModal(h)}
+                        style={styles.actionBtnEditPrice}
+                      >
+                        <Ionicons name="create-outline" size={14} color="#0284c7" />
+                        <Text style={styles.actionBtnEditPriceText}>Edit Price</Text>
+                      </TouchableOpacity>
+
+                      {/* Button 3: Map Link (if available) */}
                       {hasMaps && (
                         <TouchableOpacity
                           onPress={() => {
@@ -1296,19 +1389,19 @@ export default function SellerDashboardScreen({ navigation }) {
                           }}
                           style={styles.actionBtnMap}
                         >
-                          <Ionicons name="map-outline" size={15} color="#2563eb" />
+                          <Ionicons name="map-outline" size={14} color="#2563eb" />
                           <Text style={styles.actionBtnMapText}>Map</Text>
                         </TouchableOpacity>
                       )}
 
-                      {/* Button 3: Toggle Availability Status */}
+                      {/* Button 4: Toggle Availability Status */}
                       <TouchableOpacity
                         onPress={() => handleStatusToggle(h._id, h.availabilityStatus)}
                         style={[styles.actionBtnToggle, isAvail ? styles.actionBtnToggleBooked : styles.actionBtnToggleAvail]}
                       >
                         <Ionicons
                           name={isAvail ? 'lock-closed-outline' : 'checkmark-circle-outline'}
-                          size={15}
+                          size={14}
                           color={isAvail ? '#b45309' : '#166534'}
                         />
                         <Text style={[styles.actionBtnToggleText, isAvail ? { color: '#b45309' } : { color: '#166534' }]}>
@@ -2138,6 +2231,246 @@ export default function SellerDashboardScreen({ navigation }) {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* ============================================================== */}
+      {/* EDIT BILLBOARD & PRICE MODAL (MATCHING WEB CLIENT) */}
+      {/* ============================================================== */}
+      <Modal visible={!!editHoardingModal} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+          {editHoardingModal && (
+            <>
+              <View style={styles.modalHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalHeading}>Edit Billboard & Price</Text>
+                  <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '700', marginTop: 2 }}>
+                    ID: #{editHoardingModal._id.slice(-6).toUpperCase()} • Update Tariff & Specs
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setEditHoardingModal(null)}>
+                  <Ionicons name="close" size={24} color="#0f172a" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+                {/* PRIORITY SECTION: TARIFF & PRICING */}
+                <View style={styles.editPriceHighlightCard}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <View style={styles.editPriceIconBadge}>
+                      <Ionicons name="cash" size={16} color="#059669" />
+                    </View>
+                    <View>
+                      <Text style={styles.editPriceSectionTitle}>Billboard Rental Tariff</Text>
+                      <Text style={styles.editPriceSectionSub}>Set your monthly rate and minimum duration</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.inputLabel}>Monthly Rental Rate (₹) *</Text>
+                  <View style={styles.priceInputWrap}>
+                    <Text style={styles.rupeePrefix}>₹</Text>
+                    <TextInput
+                      style={styles.priceInput}
+                      keyboardType="numeric"
+                      placeholder="e.g., 85000"
+                      value={editHoardingModal.baseRatePerMonth}
+                      onChangeText={t => {
+                        const monthlyVal = Number(t) || 0;
+                        setEditHoardingModal(p => ({
+                          ...p,
+                          baseRatePerMonth: t,
+                          baseRatePerDay: monthlyVal > 0 ? String(Math.round(monthlyVal / 30)) : ''
+                        }));
+                      }}
+                    />
+                    <Text style={styles.priceMonthSuffix}>/ month</Text>
+                  </View>
+
+                  {/* Calculated daily rate display */}
+                  <View style={styles.calcDailyRateBox}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="calculator-outline" size={14} color="#059669" />
+                      <Text style={styles.calcDailyRateLabel}>Estimated Daily Rate:</Text>
+                    </View>
+                    <Text style={styles.calcDailyRateVal}>
+                      ₹{(Number(editHoardingModal.baseRatePerDay) || Math.round((Number(editHoardingModal.baseRatePerMonth) || 0) / 30)).toLocaleString('en-IN')}/day
+                    </Text>
+                  </View>
+
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={styles.inputLabel}>Minimum Booking Period (Days)</Text>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      placeholder="15"
+                      value={editHoardingModal.minimumBookingDays}
+                      onChangeText={t => setEditHoardingModal(p => ({ ...p, minimumBookingDays: t }))}
+                    />
+                  </View>
+                </View>
+
+                {/* BOARD SPECIFICATIONS */}
+                <Text style={[styles.inputLabel, { marginTop: 16 }]}>Hoarding / Display Type</Text>
+                <View style={styles.pillsRow}>
+                  {['Billboard', 'Unipole', 'Gantry', 'Kiosk', 'Bridge Panel', 'Digital Screen'].map(type => (
+                    <TouchableOpacity
+                      key={type}
+                      onPress={() => setEditHoardingModal(p => ({ ...p, hoardingType: type }))}
+                      style={[
+                        styles.pillOption,
+                        editHoardingModal.hoardingType === type && styles.pillOptionSelected
+                      ]}
+                    >
+                      <Text style={[
+                        styles.pillOptionText,
+                        editHoardingModal.hoardingType === type && styles.pillOptionTextSelected
+                      ]}>{type}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={[styles.inputLabel, { marginTop: 14 }]}>Lighting Type</Text>
+                <View style={styles.pillsRow}>
+                  {['Frontlit', 'Backlit', 'Non-Lit', 'Digital LED'].map(light => (
+                    <TouchableOpacity
+                      key={light}
+                      onPress={() => setEditHoardingModal(p => ({ ...p, lightingType: light }))}
+                      style={[
+                        styles.pillOption,
+                        editHoardingModal.lightingType === light && styles.pillOptionSelected
+                      ]}
+                    >
+                      <Text style={[
+                        styles.pillOptionText,
+                        editHoardingModal.lightingType === light && styles.pillOptionTextSelected
+                      ]}>{light}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* DIMENSIONS */}
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>Width (ft)</Text>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={editHoardingModal.width}
+                      onChangeText={t => setEditHoardingModal(p => ({ ...p, width: t }))}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>Height (ft)</Text>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={editHoardingModal.height}
+                      onChangeText={t => setEditHoardingModal(p => ({ ...p, height: t }))}
+                    />
+                  </View>
+                </View>
+
+                {/* TITLE & LOCATION */}
+                <Text style={[styles.inputLabel, { marginTop: 14 }]}>Billboard Title / Landmark Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. Prime Billboard at Park Circus"
+                  value={editHoardingModal.title}
+                  onChangeText={t => setEditHoardingModal(p => ({ ...p, title: t }))}
+                />
+
+                <Text style={styles.inputLabel}>City / District</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Kolkata, Durgapur, Siliguri..."
+                  value={editHoardingModal.city}
+                  onChangeText={t => setEditHoardingModal(p => ({ ...p, city: t }))}
+                />
+
+                <Text style={styles.inputLabel}>Exact Road / Landmark Address</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Road name, landmark..."
+                  value={editHoardingModal.address}
+                  onChangeText={t => setEditHoardingModal(p => ({ ...p, address: t }))}
+                />
+
+                <Text style={styles.inputLabel}>Google Maps Link</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="https://maps.google.com/?q=..."
+                  value={editHoardingModal.googleMapsUrl}
+                  onChangeText={t => setEditHoardingModal(p => ({ ...p, googleMapsUrl: t }))}
+                />
+
+                {/* AVAILABILITY STATUS */}
+                <Text style={[styles.inputLabel, { marginTop: 14 }]}>Listing Status</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => setEditHoardingModal(p => ({ ...p, availabilityStatus: 'available' }))}
+                    style={[
+                      styles.statusTogglePill,
+                      editHoardingModal.availabilityStatus === 'available' && styles.statusTogglePillAvailActive
+                    ]}
+                  >
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={16}
+                      color={editHoardingModal.availabilityStatus === 'available' ? '#166534' : '#64748b'}
+                    />
+                    <Text style={[
+                      styles.statusTogglePillText,
+                      editHoardingModal.availabilityStatus === 'available' && { color: '#166534', fontWeight: '900' }
+                    ]}>
+                      Available (Ready for Rent)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setEditHoardingModal(p => ({ ...p, availabilityStatus: 'occupied' }))}
+                    style={[
+                      styles.statusTogglePill,
+                      editHoardingModal.availabilityStatus === 'occupied' && styles.statusTogglePillBookedActive
+                    ]}
+                  >
+                    <Ionicons
+                      name="lock-closed"
+                      size={16}
+                      color={editHoardingModal.availabilityStatus === 'occupied' ? '#92400e' : '#64748b'}
+                    />
+                    <Text style={[
+                      styles.statusTogglePillText,
+                      editHoardingModal.availabilityStatus === 'occupied' && { color: '#92400e', fontWeight: '900' }
+                    ]}>
+                      Booked (Contracted)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* ACTION BUTTONS */}
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, marginBottom: 40 }}>
+                  <TouchableOpacity
+                    onPress={() => setEditHoardingModal(null)}
+                    style={styles.modalCancelBtn}
+                  >
+                    <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={handleSaveHoardingEdit}
+                    disabled={savingEditHoarding}
+                    style={[styles.submitModalBtn, { flex: 2, marginTop: 0 }]}
+                  >
+                    {savingEditHoarding ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.submitModalBtnText}>Save Price & Specs</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </>
+          )}
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -3666,5 +3999,168 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     color: '#fff',
+  },
+  editPricePillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eef2ff',
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  editPricePillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#4338ca',
+  },
+  actionBtnEditPrice: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  actionBtnEditPriceText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  editPriceHighlightCard: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1.5,
+    borderColor: '#86efac',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+  },
+  editPriceIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#dcfce7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editPriceSectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#166534',
+  },
+  editPriceSectionSub: {
+    fontSize: 11,
+    color: '#15803d',
+    fontWeight: '600',
+  },
+  priceInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#22c55e',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  rupeePrefix: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#15803d',
+    marginRight: 6,
+  },
+  priceInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    paddingVertical: 10,
+  },
+  priceMonthSuffix: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    marginLeft: 6,
+  },
+  calcDailyRateBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  calcDailyRateLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  calcDailyRateVal: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#166534',
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  pillOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  pillOptionSelected: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+  },
+  pillOptionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  pillOptionTextSelected: {
+    color: '#1d4ed8',
+    fontWeight: '800',
+  },
+  statusTogglePill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    marginTop: 6,
+  },
+  statusTogglePillAvailActive: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#86efac',
+  },
+  statusTogglePillBookedActive: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#fde68a',
+  },
+  statusTogglePillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
   },
 });
