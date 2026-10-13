@@ -1,7 +1,7 @@
 const Hoarding = require('../../models/Hoarding');
 const Booking = require('../../models/Booking');
 const Payment = require('../../models/Payment');
-const { resolveWBCoordinates, calculateDistanceKm, WB_CITIES } = require('../../utils/geo');
+const { resolveWBCoordinates, calculateDistanceKm, WB_CITIES, parseGoogleMapsUrl } = require('../../utils/geo');
 const { deleteFromCloudinary } = require('../../utils/cloudinary');
 
 exports.getNearbyHoardings = async (req, res, next) => {
@@ -180,9 +180,24 @@ exports.createHoarding = async (req, res, next) => {
     }
 
     let coordinates = location.geo?.coordinates;
+    let mapsUrl = location.googleMapsUrl || req.body.googleMapsUrl || '';
+
+    // If coordinates were not passed or pinned, try extracting from Google Maps URL
+    if ((!coordinates || coordinates.length < 2 || (!coordinates[0] && !coordinates[1])) && mapsUrl) {
+      const parsed = await parseGoogleMapsUrl(mapsUrl);
+      if (parsed) {
+        coordinates = [parsed.lng, parsed.lat];
+        if (!mapsUrl) mapsUrl = parsed.formattedUrl;
+      }
+    }
+
     if (!coordinates || coordinates.length < 2 || (!coordinates[0] && !coordinates[1])) {
       const resolved = resolveWBCoordinates(location.city) || WB_CITIES.kolkata;
       coordinates = [resolved.lng, resolved.lat];
+    }
+
+    if (!mapsUrl && coordinates && coordinates[0] && coordinates[1]) {
+      mapsUrl = `https://maps.google.com/?q=${coordinates[1]},${coordinates[0]}`;
     }
 
     const newHoarding = await Hoarding.create({
@@ -206,7 +221,7 @@ exports.createHoarding = async (req, res, next) => {
           type: 'Point',
           coordinates: [parseFloat(coordinates[0]), parseFloat(coordinates[1])]
         },
-        googleMapsUrl: location.googleMapsUrl || req.body.googleMapsUrl || ''
+        googleMapsUrl: mapsUrl
       },
       pricing: {
         baseRatePerMonth: pricing.baseRatePerMonth,
@@ -332,7 +347,15 @@ exports.updateHoarding = async (req, res, next) => {
       }
     }
 
-    if (updates.location?.geo?.coordinates) {
+    if (updates.location?.latitude && updates.location?.longitude) {
+      updates.location.geo = {
+        type: 'Point',
+        coordinates: [
+          parseFloat(updates.location.longitude),
+          parseFloat(updates.location.latitude)
+        ]
+      };
+    } else if (updates.location?.geo?.coordinates) {
       updates.location.geo = {
         type: 'Point',
         coordinates: [
@@ -340,6 +363,15 @@ exports.updateHoarding = async (req, res, next) => {
           parseFloat(updates.location.geo.coordinates[1])
         ]
       };
+    } else if (updates.location?.googleMapsUrl || updates.googleMapsUrl) {
+      const mapsLink = updates.location?.googleMapsUrl || updates.googleMapsUrl;
+      const parsed = await parseGoogleMapsUrl(mapsLink);
+      if (parsed) {
+        updates.location.geo = {
+          type: 'Point',
+          coordinates: [parsed.lng, parsed.lat]
+        };
+      }
     }
 
     // CHECK ADMIN APPROVAL REQUIREMENT:
@@ -584,3 +616,40 @@ exports.requestCoverPhotoDelete = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Resolves / extracts GPS coordinates (latitude, longitude) and formatted URL
+ * from any Google Maps link (including short links like maps.app.goo.gl, goo.gl/maps).
+ */
+exports.parseMapLink = async (req, res, next) => {
+  try {
+    const { mapUrl, url } = req.body;
+    const targetUrl = mapUrl || url;
+
+    if (!targetUrl || typeof targetUrl !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid Google Maps link or coordinates string.'
+      });
+    }
+
+    const parsed = await parseGoogleMapsUrl(targetUrl);
+    if (!parsed) {
+      return res.status(404).json({
+        success: false,
+        message: 'Could not extract GPS coordinates from this link. Please select from the map or verify the link.'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      lat: parsed.lat,
+      lng: parsed.lng,
+      googleMapsUrl: parsed.formattedUrl,
+      message: 'Coordinates extracted successfully.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

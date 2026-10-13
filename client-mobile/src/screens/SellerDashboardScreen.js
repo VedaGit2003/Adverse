@@ -361,6 +361,8 @@ export default function SellerDashboardScreen({ navigation }) {
   });
 
   const [pickedCoords, setPickedCoords] = useState(null);
+  const [pickerTarget, setPickerTarget] = useState('new'); // 'new' | 'edit'
+  const [parsingMapLink, setParsingMapLink] = useState(false);
 
   const fetchSellerData = async () => {
     if (!isAuthenticated) return;
@@ -510,6 +512,8 @@ export default function SellerDashboardScreen({ navigation }) {
       address: hoarding.location?.address || '',
       city: hoarding.location?.city || 'Kolkata',
       googleMapsUrl: hoarding.location?.googleMapsUrl || '',
+      latitude: hoarding.location?.geo?.coordinates?.[1] != null ? String(hoarding.location.geo.coordinates[1]) : '',
+      longitude: hoarding.location?.geo?.coordinates?.[0] != null ? String(hoarding.location.geo.coordinates[0]) : '',
       baseRatePerMonth: String(hoarding.pricing?.baseRatePerMonth || ''),
       baseRatePerDay: String(
         hoarding.pricing?.baseRatePerDay ||
@@ -547,7 +551,18 @@ export default function SellerDashboardScreen({ navigation }) {
         location: {
           address: editHoardingModal.address,
           city: editHoardingModal.city,
-          googleMapsUrl: editHoardingModal.googleMapsUrl || ''
+          googleMapsUrl: editHoardingModal.googleMapsUrl || '',
+          latitude: editHoardingModal.latitude || '',
+          longitude: editHoardingModal.longitude || '',
+          geo: (editHoardingModal.latitude && editHoardingModal.longitude)
+            ? {
+                type: 'Point',
+                coordinates: [
+                  parseFloat(editHoardingModal.longitude),
+                  parseFloat(editHoardingModal.latitude)
+                ]
+              }
+            : undefined
         },
         pricing: {
           baseRatePerMonth: monthly,
@@ -989,17 +1004,90 @@ export default function SellerDashboardScreen({ navigation }) {
   const handlePointPicked = (lat, lng) => {
     setPickedCoords([lat, lng]);
     const mapsUrl = `https://maps.google.com/?q=${lat.toFixed(5)},${lng.toFixed(5)}`;
-    setNewHoarding(prev => ({
-      ...prev,
-      latitude: lat.toFixed(5),
-      longitude: lng.toFixed(5),
-      googleMapsUrl: mapsUrl
-    }));
+    if (pickerTarget === 'edit') {
+      setEditHoardingModal(prev => prev ? ({
+        ...prev,
+        latitude: lat.toFixed(5),
+        longitude: lng.toFixed(5),
+        googleMapsUrl: mapsUrl
+      }) : null);
+    } else {
+      setNewHoarding(prev => ({
+        ...prev,
+        latitude: lat.toFixed(5),
+        longitude: lng.toFixed(5),
+        googleMapsUrl: mapsUrl
+      }));
+    }
     Alert.alert(
       'Location Pinned! 📍',
-      `GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}\nAuto-filled Google Maps link.`
+      `GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}\nGoogle Maps link generated.`
     );
     setShowMapPickerModal(false);
+  };
+
+  // Extract coordinates from URL locally or via backend API for Mobile
+  const extractCoordinatesFromUrl = (url) => {
+    if (!url || typeof url !== 'string') return null;
+    const trimmed = url.trim();
+    const pinMatch = trimmed.match(/!3d([-+]?\d+\.\d+)!4d([-+]?\d+\.\d+)/);
+    if (pinMatch) return { lat: parseFloat(pinMatch[1]), lng: parseFloat(pinMatch[2]) };
+    const qMatch = trimmed.match(/[?&](?:q|query|ll|center)=([-+]?\d+\.\d+)[,+]([-+]?\d+\.\d+)/);
+    if (qMatch) return { lat: parseFloat(qMatch[1]), lng: parseFloat(qMatch[2]) };
+    const vpMatch = trimmed.match(/@([-+]?\d+\.\d+),([-+]?\d+\.\d+)/);
+    if (vpMatch) return { lat: parseFloat(vpMatch[1]), lng: parseFloat(vpMatch[2]) };
+    const rawMatch = trimmed.match(/^\s*([-+]?\d+\.\d+)[,\s]+([-+]?\d+\.\d+)\s*$/);
+    if (rawMatch) return { lat: parseFloat(rawMatch[1]), lng: parseFloat(rawMatch[2]) };
+    return null;
+  };
+
+  const applyMobileExtractedCoords = (lat, lng, urlStr, target) => {
+    const mapsUrl = `https://maps.google.com/?q=${Number(lat).toFixed(5)},${Number(lng).toFixed(5)}`;
+    const finalUrl = urlStr && urlStr.startsWith('http') ? urlStr : mapsUrl;
+    if (target === 'edit') {
+      setEditHoardingModal(prev => prev ? ({
+        ...prev,
+        latitude: Number(lat).toFixed(5),
+        longitude: Number(lng).toFixed(5),
+        googleMapsUrl: finalUrl
+      }) : null);
+    } else {
+      setNewHoarding(prev => ({
+        ...prev,
+        latitude: Number(lat).toFixed(5),
+        longitude: Number(lng).toFixed(5),
+        googleMapsUrl: finalUrl
+      }));
+    }
+  };
+
+  const handleParseAndApplyMapLinkMobile = async (rawUrl, target = 'new') => {
+    if (!rawUrl || !rawUrl.trim()) {
+      Alert.alert('Missing Link', 'Please paste a Google Maps link or coordinates first.');
+      return;
+    }
+    const trimmed = rawUrl.trim();
+    const local = extractCoordinatesFromUrl(trimmed);
+    if (local) {
+      applyMobileExtractedCoords(local.lat, local.lng, trimmed, target);
+      Alert.alert('GPS Extracted! 📍', `Pinned: ${local.lat.toFixed(5)}, ${local.lng.toFixed(5)}`);
+      return;
+    }
+
+    setParsingMapLink(true);
+    try {
+      const res = await mobileApi.post('/hoardings/parse-map-link', { mapUrl: trimmed });
+      if (res.data?.success && res.data.lat && res.data.lng) {
+        applyMobileExtractedCoords(res.data.lat, res.data.lng, res.data.googleMapsUrl || trimmed, target);
+        Alert.alert('GPS Resolved! 📍', `Pinned: ${Number(res.data.lat).toFixed(5)}, ${Number(res.data.lng).toFixed(5)}`);
+      } else {
+        Alert.alert('Notice', res.data?.message || 'Could not extract coordinates from link. Please pick from map.');
+      }
+    } catch (err) {
+      Alert.alert('Notice', err.response?.data?.message || 'Could not extract coordinates from this link. You can select directly from the interactive map.');
+    } finally {
+      setParsingMapLink(false);
+    }
   };
 
   const handleAddHoardingSubmit = async () => {
@@ -1728,25 +1816,51 @@ export default function SellerDashboardScreen({ navigation }) {
                 <Text style={styles.pinSub}>
                   {newHoarding.latitude
                     ? `Pinned: ${newHoarding.latitude}, ${newHoarding.longitude}`
-                    : 'Tap "Pin on Free Map" to set coordinates'}
+                    : 'Tap "Select from Map" to set coordinates'}
                 </Text>
               </View>
 
               <TouchableOpacity
-                onPress={() => setShowMapPickerModal(true)}
+                onPress={() => {
+                  setPickerTarget('new');
+                  setPickedCoords(
+                    newHoarding.latitude && newHoarding.longitude
+                      ? [parseFloat(newHoarding.latitude), parseFloat(newHoarding.longitude)]
+                      : [22.5726, 88.3639]
+                  );
+                  setShowMapPickerModal(true);
+                }}
                 style={styles.pinBtn}
               >
-                <Ionicons name="pin" size={16} color="#2563eb" />
-                <Text style={styles.pinBtnText}>Pin on Free Map</Text>
+                <Ionicons name="map" size={16} color="#2563eb" />
+                <Text style={styles.pinBtnText}>Select from Map</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Google Maps Link (Auto-generated or Paste)</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+              <Text style={styles.inputLabel}>Google Maps Link</Text>
+              <TouchableOpacity
+                disabled={parsingMapLink || !newHoarding.googleMapsUrl}
+                onPress={() => handleParseAndApplyMapLinkMobile(newHoarding.googleMapsUrl, 'new')}
+                style={[styles.extractBtn, (!newHoarding.googleMapsUrl || parsingMapLink) && { opacity: 0.5 }]}
+              >
+                <Ionicons name="locate" size={13} color="#4338ca" />
+                <Text style={styles.extractBtnText}>
+                  {parsingMapLink ? 'Extracting...' : 'Extract Pin from Link'}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={styles.input}
-              placeholder="https://maps.google.com/?q=..."
+              placeholder="Paste: https://maps.app.goo.gl/... or coordinates"
               value={newHoarding.googleMapsUrl}
-              onChangeText={t => setNewHoarding(p => ({ ...p, googleMapsUrl: t }))}
+              onChangeText={t => {
+                setNewHoarding(p => ({ ...p, googleMapsUrl: t }));
+                const local = extractCoordinatesFromUrl(t);
+                if (local) {
+                  applyMobileExtractedCoords(local.lat, local.lng, t, 'new');
+                }
+              }}
             />
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -2451,12 +2565,58 @@ export default function SellerDashboardScreen({ navigation }) {
                   onChangeText={t => setEditHoardingModal(p => ({ ...p, address: t }))}
                 />
 
-                <Text style={styles.inputLabel}>Google Maps Link</Text>
+                {/* GPS Pinning & Map Picker */}
+                <View style={styles.pinSection}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>GPS Location Pin</Text>
+                    <Text style={styles.pinSub}>
+                      {editHoardingModal.latitude
+                        ? `Pinned: ${editHoardingModal.latitude}, ${editHoardingModal.longitude}`
+                        : 'Tap "Select from Map" to set coordinates'}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setPickerTarget('edit');
+                      setPickedCoords(
+                        editHoardingModal.latitude && editHoardingModal.longitude
+                          ? [parseFloat(editHoardingModal.latitude), parseFloat(editHoardingModal.longitude)]
+                          : [22.5726, 88.3639]
+                      );
+                      setShowMapPickerModal(true);
+                    }}
+                    style={styles.pinBtn}
+                  >
+                    <Ionicons name="map" size={16} color="#2563eb" />
+                    <Text style={styles.pinBtnText}>Select from Map</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                  <Text style={styles.inputLabel}>Google Maps Link</Text>
+                  <TouchableOpacity
+                    disabled={parsingMapLink || !editHoardingModal.googleMapsUrl}
+                    onPress={() => handleParseAndApplyMapLinkMobile(editHoardingModal.googleMapsUrl, 'edit')}
+                    style={[styles.extractBtn, (!editHoardingModal.googleMapsUrl || parsingMapLink) && { opacity: 0.5 }]}
+                  >
+                    <Ionicons name="locate" size={13} color="#4338ca" />
+                    <Text style={styles.extractBtnText}>
+                      {parsingMapLink ? 'Extracting...' : 'Extract Pin from Link'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <TextInput
                   style={styles.input}
-                  placeholder="https://maps.google.com/?q=..."
+                  placeholder="Paste: https://maps.app.goo.gl/... or coordinates"
                   value={editHoardingModal.googleMapsUrl}
-                  onChangeText={t => setEditHoardingModal(p => ({ ...p, googleMapsUrl: t }))}
+                  onChangeText={t => {
+                    setEditHoardingModal(p => ({ ...p, googleMapsUrl: t }));
+                    const local = extractCoordinatesFromUrl(t);
+                    if (local) {
+                      applyMobileExtractedCoords(local.lat, local.lng, t, 'edit');
+                    }
+                  }}
                 />
 
                 {/* AVAILABILITY STATUS */}
@@ -3185,6 +3345,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#2563eb',
+  },
+  extractBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  extractBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#4338ca',
   },
   submitModalBtn: {
     backgroundColor: '#2563eb',

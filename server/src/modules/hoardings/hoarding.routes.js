@@ -11,7 +11,8 @@ const {
   getMyHoardings,
   getWBLocations,
   deleteHoardingPhoto,
-  requestCoverPhotoDelete
+  requestCoverPhotoDelete,
+  parseMapLink
 } = require('./hoarding.controller');
 const { verifyToken, authorizeRoles, requireApprovedSeller } = require('../../middlewares/auth.middleware');
 
@@ -19,6 +20,7 @@ router.get('/locations', getWBLocations);
 router.get('/nearby', getNearbyHoardings);
 router.get('/', getAllHoardings);
 router.get('/my-sites', verifyToken, authorizeRoles('seller', 'admin'), getMyHoardings);
+router.post('/parse-map-link', verifyToken, parseMapLink);
 router.get('/:id', getHoardingById);
 
 router.post('/', verifyToken, authorizeRoles('seller', 'admin'), requireApprovedSeller, createHoarding);

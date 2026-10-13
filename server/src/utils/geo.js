@@ -182,9 +182,136 @@ function resolveWBCoordinates(query) {
   return null;
 }
 
+/**
+ * Extract GPS coordinates (lat, lng) from any Google Maps link or raw coordinates string.
+ * Supports:
+ * - Direct coordinate query: ?q=22.5532,88.3527, ?query=..., ll=...
+ * - Viewport path: /@22.5532,88.3527,17z
+ * - Place pin data: !3d22.5532!4d88.3527
+ * - Plain coordinate string: "22.5532, 88.3527"
+ * - Short links (maps.app.goo.gl, goo.gl/maps, bit.ly, etc.): follows redirects with timeout
+ */
+async function parseGoogleMapsUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+
+  // Helper: extract coordinates from a string using regex patterns
+  function extractFromPattern(str) {
+    if (!str) return null;
+
+    // 1. Precise pin data: !3d<lat>!4d<lng>
+    const pinMatch = str.match(/!3d([-+]?\d+\.\d+)!4d([-+]?\d+\.\d+)/);
+    if (pinMatch) {
+      return {
+        lat: parseFloat(pinMatch[1]),
+        lng: parseFloat(pinMatch[2])
+      };
+    }
+
+    // 2. Query param: ?q=lat,lng or &q=lat,lng or query=lat,lng or ll=lat,lng or center=lat,lng
+    const queryMatch = str.match(/[?&](?:q|query|ll|center)=([-+]?\d+\.\d+)[,+]([-+]?\d+\.\d+)/);
+    if (queryMatch) {
+      return {
+        lat: parseFloat(queryMatch[1]),
+        lng: parseFloat(queryMatch[2])
+      };
+    }
+
+    // 3. Viewport path: /@lat,lng
+    const viewportMatch = str.match(/@([-+]?\d+\.\d+),([-+]?\d+\.\d+)/);
+    if (viewportMatch) {
+      return {
+        lat: parseFloat(viewportMatch[1]),
+        lng: parseFloat(viewportMatch[2])
+      };
+    }
+
+    // 4. Raw coordinates string: "22.5532, 88.3527" or "22.55320 88.35270"
+    const rawMatch = str.match(/^\s*([-+]?\d+\.\d+)[,\s]+([-+]?\d+\.\d+)\s*$/);
+    if (rawMatch) {
+      return {
+        lat: parseFloat(rawMatch[1]),
+        lng: parseFloat(rawMatch[2])
+      };
+    }
+
+    return null;
+  }
+
+  // 1. First check immediately on the supplied string
+  const directMatch = extractFromPattern(trimmed);
+  if (directMatch) {
+    return {
+      lat: directMatch.lat,
+      lng: directMatch.lng,
+      formattedUrl: `https://maps.google.com/?q=${directMatch.lat.toFixed(5)},${directMatch.lng.toFixed(5)}`
+    };
+  }
+
+  // 2. If URL looks like a shortened link or redirector
+  const isShortOrRedirect = /(goo\.gl|maps\.app\.goo\.gl|page\.link|bit\.ly|tinyurl\.com|t\.co)/i.test(trimmed) ||
+    (/^https?:\/\//i.test(trimmed) && !trimmed.includes('@') && !trimmed.includes('?q='));
+
+  if (isShortOrRedirect && typeof fetch === 'function') {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(trimmed, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+
+      // Check resolved final URL
+      const finalUrlMatch = extractFromPattern(res.url);
+      if (finalUrlMatch) {
+        return {
+          lat: finalUrlMatch.lat,
+          lng: finalUrlMatch.lng,
+          formattedUrl: `https://maps.google.com/?q=${finalUrlMatch.lat.toFixed(5)},${finalUrlMatch.lng.toFixed(5)}`
+        };
+      }
+
+      // Check HTML content for coordinates if not in final URL string
+      const html = await res.text();
+      const htmlMatch = extractFromPattern(html);
+      if (htmlMatch) {
+        return {
+          lat: htmlMatch.lat,
+          lng: htmlMatch.lng,
+          formattedUrl: `https://maps.google.com/?q=${htmlMatch.lat.toFixed(5)},${htmlMatch.lng.toFixed(5)}`
+        };
+      }
+
+      // Fallback regex inside HTML for Google Maps script tags or meta tags:
+      const metaMatch = html.match(/staticmap\?center=([-+]?\d+\.\d+)%2C([-+]?\d+\.\d+)/i) ||
+                        html.match(/\[null,null,([-+]?\d+\.\d+),([-+]?\d+\.\d+)\]/);
+      if (metaMatch) {
+        const lat = parseFloat(metaMatch[1]);
+        const lng = parseFloat(metaMatch[2]);
+        return {
+          lat,
+          lng,
+          formattedUrl: `https://maps.google.com/?q=${lat.toFixed(5)},${lng.toFixed(5)}`
+        };
+      }
+    } catch (err) {
+      // Abort or network failure, safely return null
+    }
+  }
+
+  return null;
+}
+
 module.exports = {
   WB_REGIONS,
   WB_CITIES,
   calculateDistanceKm,
-  resolveWBCoordinates
+  resolveWBCoordinates,
+  parseGoogleMapsUrl
 };
