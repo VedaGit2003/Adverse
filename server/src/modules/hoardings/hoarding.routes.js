@@ -12,11 +12,13 @@ const {
   getWBLocations,
   deleteHoardingPhoto,
   requestCoverPhotoDelete,
-  parseMapLink
+  parseMapLink,
+  searchLocations
 } = require('./hoarding.controller');
 const { verifyToken, authorizeRoles, requireApprovedSeller } = require('../../middlewares/auth.middleware');
 
 router.get('/locations', getWBLocations);
+router.get('/search-locations', searchLocations);
 router.get('/nearby', getNearbyHoardings);
 router.get('/', getAllHoardings);
 router.get('/my-sites', verifyToken, authorizeRoles('seller', 'admin'), getMyHoardings);

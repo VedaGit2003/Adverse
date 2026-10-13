@@ -653,3 +653,119 @@ exports.parseMapLink = async (req, res, next) => {
   }
 };
 
+/**
+ * Free Location Search for Maps & Pickers
+ * Combines curated local WB landmarks and OpenStreetMap Nominatim free geocoding.
+ * 100% free with zero API key requirement.
+ */
+exports.searchLocations = async (req, res, next) => {
+  try {
+    const { q = '' } = req.query;
+    const query = q.trim().toLowerCase();
+    const results = [];
+
+    // 1. Curated WB Regional hubs (instant, high-precision)
+    const { WB_REGIONS } = require('../../utils/geo');
+    WB_REGIONS.forEach((reg) => {
+      reg.areas.forEach((a) => {
+        if (
+          !query ||
+          a.name.toLowerCase().includes(query) ||
+          a.city.toLowerCase().includes(query) ||
+          reg.region.toLowerCase().includes(query)
+        ) {
+          results.push({
+            id: a.id,
+            name: a.name,
+            description: `${a.city} • ${reg.region}`,
+            lat: a.lat,
+            lng: a.lng,
+            popular: a.popular || false,
+            source: 'local'
+          });
+        }
+      });
+    });
+
+    // 2. OpenStreetMap Nominatim Free Geocoding API (0 cost, no API keys)
+    if (query.length >= 2) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+        // First attempt with India countrycode bias
+        const osmUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          query
+        )}&countrycodes=in&limit=6&addressdetails=1`;
+
+        const osmRes = await fetch(osmUrl, {
+          headers: {
+            'User-Agent': 'Adverse-Outdoor-Platform/1.0 (adverse.platform@gmail.com)',
+            'Accept-Language': 'en'
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        let osmData = [];
+        if (osmRes.ok) {
+          osmData = await osmRes.json();
+        }
+
+        // If no India results, retry without country restriction
+        if ((!osmData || osmData.length === 0) && query.length >= 3) {
+          const globalController = new AbortController();
+          const globalTimer = setTimeout(() => globalController.abort(), 2500);
+          const globalRes = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+              query
+            )}&limit=5&addressdetails=1`,
+            {
+              headers: { 'User-Agent': 'Adverse-Outdoor-Platform/1.0' },
+              signal: globalController.signal
+            }
+          );
+          clearTimeout(globalTimer);
+          if (globalRes.ok) {
+            osmData = await globalRes.json();
+          }
+        }
+
+        if (Array.isArray(osmData)) {
+          osmData.forEach((item) => {
+            const lat = parseFloat(item.lat);
+            const lng = parseFloat(item.lon);
+            const isDuplicate = results.some(
+              (r) => Math.abs(r.lat - lat) < 0.005 && Math.abs(r.lng - lng) < 0.005
+            );
+            if (!isDuplicate) {
+              const parts = (item.display_name || '').split(',');
+              const title = parts[0]?.trim() || item.name || query;
+              const subtitle = parts.slice(1, 4).join(',').trim();
+              results.push({
+                name: title,
+                description: subtitle || item.display_name,
+                lat,
+                lng,
+                source: 'osm'
+              });
+            }
+          });
+        }
+      } catch (err) {
+        // Fallback gracefully to local results
+      }
+    }
+
+    const finalResults = results.slice(0, 8);
+    res.status(200).json({
+      success: true,
+      count: finalResults.length,
+      results: finalResults
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+

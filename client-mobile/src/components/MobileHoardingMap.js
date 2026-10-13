@@ -37,9 +37,69 @@ export default function MobileHoardingMap({
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           html, body, #map { width: 100%; height: 100%; background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-          .layer-toggle {
+          .map-search-bar {
             position: absolute;
             top: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 1001;
+            background: rgba(255, 255, 255, 0.98);
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            padding: 7px 12px;
+            gap: 8px;
+          }
+          .search-svg { width: 16px; height: 16px; flex-shrink: 0; stroke: #64748b; }
+          #map-search-input {
+            border: none;
+            outline: none;
+            background: transparent;
+            width: 100%;
+            font-size: 13px;
+            color: #0f172a;
+            font-family: inherit;
+            font-weight: 600;
+          }
+          #map-search-clear {
+            border: none;
+            background: transparent;
+            color: #94a3b8;
+            font-size: 18px;
+            line-height: 1;
+            padding: 0 4px;
+            display: none;
+            cursor: pointer;
+          }
+          .search-results-list {
+            position: absolute;
+            top: 52px;
+            left: 10px;
+            right: 10px;
+            z-index: 1002;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            border: 1px solid #e2e8f0;
+            max-height: 200px;
+            overflow-y: auto;
+          }
+          .search-item {
+            padding: 10px 14px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 12px;
+            cursor: pointer;
+            text-align: left;
+          }
+          .search-item:last-child { border-bottom: none; }
+          .search-item:active { background: #eff6ff; }
+          .search-item-title { font-weight: 700; color: #1e293b; font-size: 13px; }
+          .search-item-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+          .layer-toggle {
+            position: absolute;
+            top: 54px;
             right: 10px;
             z-index: 1000;
             background: rgba(255, 255, 255, 0.95);
@@ -117,22 +177,32 @@ export default function MobileHoardingMap({
           }
           .picker-banner {
             position: absolute;
-            top: 10px;
+            bottom: 15px;
             left: 10px;
+            right: 10px;
             z-index: 1000;
             background: rgba(254, 243, 199, 0.96);
             border: 1px solid #f59e0b;
             color: #92400e;
-            padding: 6px 10px;
-            border-radius: 10px;
+            padding: 8px 12px;
+            border-radius: 12px;
             font-size: 11px;
             font-weight: 700;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
           }
         </style>
       </head>
       <body>
         <div id="map"></div>
+
+        <!-- Free Interactive Map Search Bar -->
+        <div class="map-search-bar" id="search-box">
+          <svg class="search-svg" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input id="map-search-input" type="text" placeholder="${pickerMode ? 'Search place to pin billboard...' : 'Search place, city, street...'}" autocomplete="off" />
+          <button id="map-search-clear" onclick="clearSearch()">&times;</button>
+        </div>
+        <div id="search-results-dropdown" class="search-results-list" style="display:none;"></div>
 
         <div class="layer-toggle">
           <button id="btn-streets" class="layer-btn active" onclick="switchLayer('streets')">Street</button>
@@ -142,7 +212,7 @@ export default function MobileHoardingMap({
 
         ${
           pickerMode
-            ? '<div class="picker-banner">🎯 Tap map to pin GPS location</div>'
+            ? '<div class="picker-banner">🎯 Tap anywhere on map or search above to pin GPS location</div>'
             : ''
         }
 
@@ -274,6 +344,94 @@ export default function MobileHoardingMap({
               }
             }
           });
+
+          // Free Geocoding Search Handlers
+          const searchBox = document.getElementById('search-box');
+          const resultsDropdown = document.getElementById('search-results-dropdown');
+          if (searchBox) {
+            L.DomEvent.disableClickPropagation(searchBox);
+            L.DomEvent.disableScrollPropagation(searchBox);
+          }
+          if (resultsDropdown) {
+            L.DomEvent.disableClickPropagation(resultsDropdown);
+            L.DomEvent.disableScrollPropagation(resultsDropdown);
+          }
+
+          let searchTimeout = null;
+          const searchInput = document.getElementById('map-search-input');
+          const clearBtn = document.getElementById('map-search-clear');
+
+          function clearSearch() {
+            if (searchInput) searchInput.value = '';
+            if (clearBtn) clearBtn.style.display = 'none';
+            if (resultsDropdown) {
+              resultsDropdown.innerHTML = '';
+              resultsDropdown.style.display = 'none';
+            }
+          }
+
+          if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+              const val = e.target.value.trim();
+              if (clearBtn) clearBtn.style.display = val ? 'block' : 'none';
+
+              clearTimeout(searchTimeout);
+              if (val.length < 2) {
+                if (resultsDropdown) {
+                  resultsDropdown.innerHTML = '';
+                  resultsDropdown.style.display = 'none';
+                }
+                return;
+              }
+
+              searchTimeout = setTimeout(function() {
+                fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(val) + '&countrycodes=in&limit=5&addressdetails=1')
+                  .then(function(res) { return res.json(); })
+                  .then(function(data) {
+                    if (!data || data.length === 0) {
+                      resultsDropdown.innerHTML = '<div class="search-item" style="color:#94a3b8;font-style:italic;">No places found</div>';
+                      resultsDropdown.style.display = 'block';
+                      return;
+                    }
+                    var html = '';
+                    data.forEach(function(item) {
+                      var parts = (item.display_name || '').split(',');
+                      var title = parts[0] || item.name || val;
+                      var sub = parts.slice(1, 3).join(',').trim();
+                      var safeTitle = title.replace(/'/g, "\\'");
+                      html += '<div class="search-item" onclick="selectSearchLocation(' + item.lat + ',' + item.lon + ',\\'' + safeTitle + '\\')">' +
+                              '<div class="search-item-title">📍 ' + title + '</div>' +
+                              (sub ? '<div class="search-item-sub">' + sub + '</div>' : '') +
+                              '</div>';
+                    });
+                    resultsDropdown.innerHTML = html;
+                    resultsDropdown.style.display = 'block';
+                  })
+                  .catch(function() {
+                    resultsDropdown.style.display = 'none';
+                  });
+              }, 280);
+            });
+          }
+
+          function selectSearchLocation(lat, lng, name) {
+            lat = parseFloat(lat);
+            lng = parseFloat(lng);
+            map.flyTo([lat, lng], 16, { duration: 1.2 });
+            if (searchInput) searchInput.value = name;
+            if (resultsDropdown) resultsDropdown.style.display = 'none';
+
+            if (isPicker) {
+              if (pickerMarker) {
+                pickerMarker.setLatLng([lat, lng]);
+              } else {
+                pickerMarker = L.marker([lat, lng], { icon: createDivPin('center') }).addTo(map);
+              }
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'POINT_PICKED', lat: lat, lng: lng }));
+              }
+            }
+          }
         </script>
       </body>
       </html>
