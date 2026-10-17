@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import HoardingMap from '../../components/HoardingMap';
 import MountingTracker from '../../components/MountingTracker';
+import RemountingTracker from '../../components/RemountingTracker';
 
 export default function SellerDashboardPage() {
   const { user, updateUser, refreshUser } = useAuth();
@@ -1580,6 +1581,17 @@ export default function SellerDashboardPage() {
                           <div>
                             <strong>Campaign Expired & Completed:</strong> This booking has concluded its campaign duration. The hoarding site has been automatically released to <strong>Available</strong> for new advertisers to book.
                           </div>
+                        </div>
+                      )}
+
+                      {/* FLEX REMOUNTING TRACKER (WITH MOVING LINE) */}
+                      {b.remountingRequests && b.remountingRequests.length > 0 && (
+                        <div>
+                          <RemountingTracker
+                            booking={b}
+                            userRole="seller"
+                            onUpdate={() => fetchData(true)}
+                          />
                         </div>
                       )}
 

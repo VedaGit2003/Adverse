@@ -11,7 +11,12 @@ const {
   verifyMountingProof,
   adminOverrideBooking,
   updateBookingStatus,
-  updateCampaignCreative
+  updateCampaignCreative,
+  requestRemounting,
+  payRemounting,
+  updateRemountingStatus,
+  uploadRemountingProof,
+  verifyRemountingProof
 } = require('./booking.controller');
 const { verifyToken, authorizeRoles } = require('../../middlewares/auth.middleware');
 
@@ -36,6 +41,24 @@ router.put('/:id/mounting-proof', verifyToken, authorizeRoles('seller', 'admin')
 
 // 4-Hour Verification Window (Customer or Admin verifies -> Officially begins subscription date)
 router.put('/:id/verify-mounting', verifyToken, verifyMountingProof);
+
+// ============================================================================
+// FLEX REMOUNTING ROUTES (₹3/SQ.FT PIPELINE & ADMIN FULL RIGHTS STATUS)
+// ============================================================================
+// Step 1: Customer or Admin requests new flex remounting (₹3/sq.ft charge)
+router.post('/:id/remounting', verifyToken, requestRemounting);
+
+// Step 2: Customer or Admin pays remounting fee
+router.post('/:id/remounting/:requestId/pay', verifyToken, payRemounting);
+
+// Step 3 & Beyond: Admin has all rights to set status; Seller can update operational phases
+router.put('/:id/remounting/:requestId/status', verifyToken, authorizeRoles('seller', 'admin'), updateRemountingStatus);
+
+// Replacement proof photo upload (Seller / Admin)
+router.post('/:id/remounting/:requestId/proof', verifyToken, authorizeRoles('seller', 'admin'), uploadRemountingProof);
+
+// Verification of remounting (Customer / Admin)
+router.put('/:id/remounting/:requestId/verify', verifyToken, verifyRemountingProof);
 
 // Admin Full Rights Override
 router.put('/:id/admin-override', verifyToken, authorizeRoles('admin'), adminOverrideBooking);

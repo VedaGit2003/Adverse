@@ -770,3 +770,480 @@ exports.updateCampaignCreative = async (req, res, next) => {
     next(error);
   }
 };
+
+// ============================================================================
+// FLEX REMOUNTING PIPELINE (₹3 PER SQ.FT CHARGE & MULTI-PHASE FLOW)
+// ============================================================================
+const REMOUNTING_RATE_PER_SQFT = 3; // Fixed platform rate: 3 Rs per square foot
+
+function generateRemountingRequestId() {
+  const timestamp = Date.now().toString().slice(-4);
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  return `REM-WB-${timestamp}-${randomSuffix}`;
+}
+
+/**
+ * @desc    Client or Admin creates a new Flex Remounting request for an ongoing booking
+ * @route   POST /api/bookings/:id/remounting
+ * @access  Private (Customer of booking or Admin)
+ */
+exports.requestRemounting = async (req, res, next) => {
+  try {
+    const { campaignName, newCreativeUrl, notes, pickupAddress, customWidth, customHeight } = req.body;
+
+    const booking = await Booking.findById(req.params.id).populate('hoardingId');
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+
+    // Customer or Admin only
+    if (booking.customerId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Only the booking customer or admin can request remounting.' });
+    }
+
+    // Must be an ongoing / active booking (or confirmed/mounting)
+    if (!['active', 'confirmed', 'mounting_window', 'verification_pending'].includes(booking.bookingStatus) && req.user.role !== 'admin') {
+      return res.status(400).json({
+        success: false,
+        message: 'Remounting can only be requested for ongoing or active bookings.'
+      });
+    }
+
+    const hoarding = booking.hoardingId;
+    const width = Number(customWidth) || Number(hoarding?.dimensions?.width) || 20;
+    const height = Number(customHeight) || Number(hoarding?.dimensions?.height) || 10;
+    const unit = hoarding?.dimensions?.unit || 'feet';
+
+    const areaSqFt = Math.round(width * height);
+    if (areaSqFt <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid hoarding dimensions to calculate square footage.' });
+    }
+
+    // Exact ₹3 per square foot
+    const totalAmount = areaSqFt * REMOUNTING_RATE_PER_SQFT;
+    const requestId = generateRemountingRequestId();
+
+    const newRequest = {
+      requestId,
+      requestedAt: new Date(),
+      requestedBy: req.user.id,
+      dimensions: { width, height, unit },
+      areaSqFt,
+      ratePerSqFt: REMOUNTING_RATE_PER_SQFT,
+      totalAmount,
+      campaignName: campaignName || booking.campaignName || 'Flex Banner Remounting',
+      newCreativeUrl: newCreativeUrl || '',
+      notes: notes || '',
+      pickupAddress: pickupAddress || '',
+      status: 'requested', // Step 1: Requested
+      paymentStatus: 'pending',
+      history: [
+        {
+          status: 'requested',
+          title: 'Remounting Requested',
+          description: `Customer requested new flex remounting (${width}ft × ${height}ft = ${areaSqFt} sq.ft @ ₹${REMOUNTING_RATE_PER_SQFT}/sq.ft = ₹${totalAmount}).`,
+          updatedAt: new Date(),
+          updatedBy: req.user.id,
+          updatedByRole: req.user.role
+        }
+      ]
+    };
+
+    if (!booking.remountingRequests) {
+      booking.remountingRequests = [];
+    }
+
+    booking.remountingRequests.unshift(newRequest);
+
+    booking.timeline.push({
+      event: 'flex_remounting_requested',
+      title: 'New Flex Remounting Requested',
+      description: `Request ${requestId}: ${areaSqFt} sq.ft @ ₹${REMOUNTING_RATE_PER_SQFT}/sq.ft. Total fee: ₹${totalAmount.toLocaleString('en-IN')}.`,
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      timestamp: new Date()
+    });
+
+    await booking.save();
+
+    res.status(201).json({
+      success: true,
+      message: `Flex remounting requested successfully. Total charge: ₹${totalAmount} (${areaSqFt} sq.ft @ ₹3/sq.ft).`,
+      remountingRequest: newRequest,
+      booking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Process payment for flex remounting (₹3 per sq.ft)
+ * @route   POST /api/bookings/:id/remounting/:requestId/pay
+ * @access  Private (Customer or Admin)
+ */
+exports.payRemounting = async (req, res, next) => {
+  try {
+    const { paymentMode = 'online_upi', transactionReference, receiptImageUrl, bankName } = req.body;
+    const { id, requestId } = req.params;
+
+    const booking = await Booking.findById(id);
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+
+    if (booking.customerId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Unauthorized.' });
+    }
+
+    const remounting = (booking.remountingRequests || []).find((r) => r.requestId === requestId);
+    if (!remounting) {
+      return res.status(404).json({ success: false, message: 'Remounting request not found.' });
+    }
+
+    if (remounting.paymentStatus === 'paid') {
+      return res.status(400).json({ success: false, message: 'Remounting fee is already paid.' });
+    }
+
+    const now = new Date();
+    const txnRef = transactionReference || `REM-TXN-${Date.now()}`;
+
+    // Record in Payment collection
+    const payment = await Payment.create({
+      bookingId: booking._id,
+      customerId: booking.customerId,
+      sellerId: booking.sellerId,
+      amount: remounting.totalAmount,
+      paymentMode,
+      paymentStatus: 'paid',
+      offlineDetails: {
+        transactionReference: txnRef,
+        bankName: bankName || 'Online Payment Gateway',
+        receiptImageUrl: receiptImageUrl || '',
+        paymentDate: now,
+        verifiedBy: req.user.id,
+        verifiedAt: now,
+        verificationNotes: `Payment of ₹${remounting.totalAmount} for Flex Remounting (${remounting.areaSqFt} sq.ft @ ₹3/sq.ft)`
+      }
+    });
+
+    remounting.paymentStatus = 'paid';
+    remounting.status = 'paid'; // Advance moving line to Paid
+    remounting.paymentDetails = {
+      paidAt: now,
+      paymentMode,
+      transactionReference: txnRef,
+      receiptImageUrl: receiptImageUrl || '',
+      confirmedAt: now
+    };
+
+    remounting.history.push({
+      status: 'paid',
+      title: 'Remounting Fee Paid',
+      description: `Payment of ₹${remounting.totalAmount.toLocaleString('en-IN')} confirmed via ${paymentMode}. Ready for flex pickup & mounting.`,
+      updatedAt: now,
+      updatedBy: req.user.id,
+      updatedByRole: req.user.role
+    });
+
+    booking.timeline.push({
+      event: 'flex_remounting_paid',
+      title: 'Flex Remounting Fee Paid',
+      description: `Remounting fee of ₹${remounting.totalAmount.toLocaleString('en-IN')} paid (${remounting.areaSqFt} sq.ft @ ₹3/sq.ft). Txn: ${txnRef}.`,
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      timestamp: now
+    });
+
+    booking.markModified('remountingRequests');
+    await booking.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Remounting payment processed successfully! Ready for pickup & mounting.',
+      remountingRequest: remounting,
+      payment,
+      booking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update remounting status (Admin has full rights to set ANY status; Seller can update operational phases)
+ * @route   PUT /api/bookings/:id/remounting/:requestId/status
+ * @access  Private (Seller or Admin)
+ */
+exports.updateRemountingStatus = async (req, res, next) => {
+  try {
+    const { id, requestId } = req.params;
+    const { status, notes, adminNotes, newCreativeUrl, flexPickupNotes, mountingNotes } = req.body;
+
+    const booking = await Booking.findById(id);
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+
+    const isSeller = booking.sellerId.toString() === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isSeller && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Site owner or admin only.' });
+    }
+
+    const remounting = (booking.remountingRequests || []).find((r) => r.requestId === requestId);
+    if (!remounting) {
+      return res.status(404).json({ success: false, message: 'Remounting request not found.' });
+    }
+
+    const validStatuses = [
+      'requested',
+      'approved',
+      'paid',
+      'flex_pickup',
+      'mounting',
+      'proof_uploaded',
+      'completed',
+      'rejected',
+      'cancelled'
+    ];
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    // Seller permissions check: Admin can set ANY status, Seller can update workflow phases
+    if (!isAdmin && ['rejected', 'cancelled', 'completed'].includes(status)) {
+      return res.status(403).json({ success: false, message: 'Only an admin can finalize or reject/cancel remounting requests.' });
+    }
+
+    const now = new Date();
+    remounting.status = status;
+
+    if (adminNotes && isAdmin) {
+      remounting.adminNotes = adminNotes;
+    }
+    if (notes) {
+      remounting.notes = notes;
+    }
+    if (newCreativeUrl) {
+      remounting.newCreativeUrl = newCreativeUrl;
+    }
+
+    if (status === 'flex_pickup') {
+      remounting.flexPickupCompletedAt = now;
+      if (flexPickupNotes) remounting.notes = flexPickupNotes;
+    } else if (status === 'mounting') {
+      remounting.mountingCompletedAt = now;
+      if (mountingNotes) remounting.notes = mountingNotes;
+    } else if (status === 'completed') {
+      remounting.verifiedAt = now;
+      remounting.verifiedBy = req.user.id;
+      // If a new creative URL was specified, also update booking creativeUrl
+      if (remounting.newCreativeUrl) {
+        booking.creativeUrl = remounting.newCreativeUrl;
+      }
+    }
+
+    remounting.history.push({
+      status,
+      title: `Status Updated to ${status.toUpperCase().replace('_', ' ')}`,
+      description: notes || adminNotes || `Status changed to ${status} by ${isAdmin ? 'Admin' : 'Site Owner'}.`,
+      updatedAt: now,
+      updatedBy: req.user.id,
+      updatedByRole: req.user.role
+    });
+
+    booking.timeline.push({
+      event: `remounting_${status}`,
+      title: `Remounting ${requestId}: ${status.toUpperCase().replace('_', ' ')}`,
+      description: notes || adminNotes || `Remounting status updated to ${status}.`,
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      timestamp: now
+    });
+
+    booking.markModified('remountingRequests');
+    await booking.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Remounting request status successfully updated to '${status}'.`,
+      remountingRequest: remounting,
+      booking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Upload proof photo for remounting with date & time
+ * @route   POST /api/bookings/:id/remounting/:requestId/proof
+ * @access  Private (Seller or Admin)
+ */
+exports.uploadRemountingProof = async (req, res, next) => {
+  try {
+    const { id, requestId } = req.params;
+    const { proofPhotoUrl, proofCaptureDateTime, notes } = req.body;
+
+    if (!proofPhotoUrl) {
+      return res.status(400).json({ success: false, message: 'Please provide proofPhotoUrl.' });
+    }
+
+    const booking = await Booking.findById(id);
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+
+    const isSeller = booking.sellerId.toString() === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isSeller && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Site owner or admin only.' });
+    }
+
+    const remounting = (booking.remountingRequests || []).find((r) => r.requestId === requestId);
+    if (!remounting) {
+      return res.status(404).json({ success: false, message: 'Remounting request not found.' });
+    }
+
+    const now = new Date();
+    let finalPhotoUrl = proofPhotoUrl;
+    if (proofPhotoUrl && proofPhotoUrl.startsWith('data:image/') && isCloudinaryConfigured) {
+      try {
+        const cloudRes = await uploadDataUriToCloudinary(proofPhotoUrl, { folder: 'adverse/remounting_proofs' });
+        finalPhotoUrl = cloudRes.secure_url;
+      } catch (cloudErr) {
+        console.error('[RemountingProof] Failed to upload base64 to Cloudinary:', cloudErr.message);
+      }
+    }
+
+    const captureTime = proofCaptureDateTime || now.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    remounting.status = 'proof_uploaded';
+    remounting.proofPhotoUrl = finalPhotoUrl;
+    remounting.proofCaptureDateTime = captureTime;
+    remounting.proofUploadedAt = now;
+    remounting.proofNotes = notes || '';
+    remounting.proofUploadedBy = req.user.id;
+
+    remounting.history.push({
+      status: 'proof_uploaded',
+      title: 'Remounting Proof Photo Uploaded',
+      description: `Replacement proof photo stamped at ${captureTime} uploaded. Ready for client/admin verification.`,
+      updatedAt: now,
+      updatedBy: req.user.id,
+      updatedByRole: req.user.role
+    });
+
+    booking.timeline.push({
+      event: 'remounting_proof_uploaded',
+      title: `Remounting Proof Uploaded (${requestId})`,
+      description: `New vinyl proof photo (${captureTime}) uploaded by ${isAdmin ? 'Admin' : 'Site Owner'}.`,
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      timestamp: now
+    });
+
+    booking.markModified('remountingRequests');
+    await booking.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Remounting proof photo uploaded successfully!',
+      remountingRequest: remounting,
+      booking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Client or Admin verifies remounting installation
+ * @route   PUT /api/bookings/:id/remounting/:requestId/verify
+ * @access  Private (Customer of booking or Admin)
+ */
+exports.verifyRemountingProof = async (req, res, next) => {
+  try {
+    const { id, requestId } = req.params;
+    const { verified = true, notes } = req.body;
+
+    const booking = await Booking.findById(id);
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+
+    const isCustomer = booking.customerId.toString() === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isCustomer && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Only the customer or admin can verify.' });
+    }
+
+    const remounting = (booking.remountingRequests || []).find((r) => r.requestId === requestId);
+    if (!remounting) {
+      return res.status(404).json({ success: false, message: 'Remounting request not found.' });
+    }
+
+    const now = new Date();
+
+    if (verified) {
+      remounting.status = 'completed';
+      remounting.verifiedAt = now;
+      remounting.verifiedBy = req.user.id;
+      remounting.verificationNotes = notes || 'New flex mounting verified and accepted.';
+
+      if (remounting.newCreativeUrl) {
+        booking.creativeUrl = remounting.newCreativeUrl;
+      }
+
+      remounting.history.push({
+        status: 'completed',
+        title: `Remounting Verified & Completed`,
+        description: `Installation verified by ${isAdmin ? 'Admin' : 'Customer'}. New flex is now live on the site.`,
+        updatedAt: now,
+        updatedBy: req.user.id,
+        updatedByRole: req.user.role
+      });
+
+      booking.timeline.push({
+        event: 'remounting_completed',
+        title: `Remounting Completed (${requestId})`,
+        description: `Verified by ${isAdmin ? 'Admin' : 'Customer'}. New flex live on site.`,
+        performedBy: req.user.id,
+        performedByRole: req.user.role,
+        timestamp: now
+      });
+    } else {
+      remounting.status = 'mounting'; // Needs rework
+      remounting.verificationNotes = notes || 'Customer reported an issue with the remounting quality.';
+
+      remounting.history.push({
+        status: 'mounting',
+        title: 'Remounting Issue Reported',
+        description: notes || 'Installation issue reported. Crew instructed to adjust mounting.',
+        updatedAt: now,
+        updatedBy: req.user.id,
+        updatedByRole: req.user.role
+      });
+
+      booking.timeline.push({
+        event: 'remounting_issue_reported',
+        title: `Remounting Issue Reported (${requestId})`,
+        description: notes || 'Customer reported an issue with remounting installation.',
+        performedBy: req.user.id,
+        performedByRole: req.user.role,
+        timestamp: now
+      });
+    }
+
+    booking.markModified('remountingRequests');
+    await booking.save();
+
+    res.status(200).json({
+      success: true,
+      message: verified ? 'Remounting verified and marked as completed!' : 'Feedback submitted. Site crew notified to adjust.',
+      remountingRequest: remounting,
+      booking
+    });
+  } catch (error) {
+    next(error);
+  }
+};

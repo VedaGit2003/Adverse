@@ -333,6 +333,268 @@ function MobileMountingTracker({ booking, onRefresh }) {
   );
 }
 
+// Helper component for Flex Remounting (₹3/sq.ft) Moving Line in Mobile
+function MobileRemountingTracker({ booking, onRefresh }) {
+  const [expanded, setExpanded] = useState(true);
+  const [paying, setPaying] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [showIssueBox, setShowIssueBox] = useState(false);
+  const [issueNotes, setIssueNotes] = useState('');
+
+  const requests = booking?.remountingRequests || [];
+  if (!requests.length) return null;
+  const req = requests[0]; // Active or latest request
+
+  const stages = [
+    { key: 'requested', label: 'Requested', icon: 'document-text-outline' },
+    { key: 'paid', label: 'Paid', icon: 'card-outline' },
+    { key: 'flex_pickup', label: 'Pickup', icon: 'car-outline' },
+    { key: 'mounting', label: 'Mounting', icon: 'construct-outline' },
+    { key: 'completed', label: 'Live', icon: 'checkmark-circle-outline' }
+  ];
+
+  const getStageIndex = (status) => {
+    switch (status) {
+      case 'requested':
+      case 'approved':
+        return 0;
+      case 'paid':
+        return 1;
+      case 'flex_pickup':
+        return 2;
+      case 'mounting':
+        return 3;
+      case 'proof_uploaded':
+        return 3.5;
+      case 'completed':
+        return 4;
+      default:
+        return 0;
+    }
+  };
+
+  const currentStageIndex = getStageIndex(req.status);
+
+  const handlePay = async () => {
+    setPaying(true);
+    try {
+      const res = await mobileApi.post(`/bookings/${booking._id}/remounting/${req.requestId}/pay`, {
+        paymentMode: 'online_upi',
+        transactionReference: `REM-UPI-${Date.now()}`
+      });
+      if (res.data.success) {
+        Alert.alert(
+          'Payment Successful 🎉',
+          `₹${req.totalAmount} paid for flex remounting (${req.areaSqFt} sq.ft @ ₹3/sq.ft). Crew notified for flex pickup!`
+        );
+        if (onRefresh) onRefresh();
+      }
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Payment failed.');
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const handleVerify = async (verified) => {
+    setVerifying(true);
+    try {
+      const res = await mobileApi.put(`/bookings/${booking._id}/remounting/${req.requestId}/verify`, {
+        verified,
+        notes: issueNotes
+      });
+      if (res.data.success) {
+        Alert.alert(
+          verified ? 'New Banner Active! 🎉' : 'Issue Reported',
+          verified
+            ? 'New flex mounting verified! Your updated banner is now officially live.'
+            : 'Issue feedback sent to mounting crew.'
+        );
+        setShowIssueBox(false);
+        setIssueNotes('');
+        if (onRefresh) onRefresh();
+      }
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Verification failed.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <View style={styles.remountContainer}>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => setExpanded(!expanded)}
+        style={styles.remountHeader}
+      >
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={styles.remountTag}>
+              <Text style={styles.remountTagText}>FLEX REMOUNTING</Text>
+            </View>
+            <View style={styles.remountRatePill}>
+              <Text style={styles.remountRateText}>₹3 / sq.ft</Text>
+            </View>
+          </View>
+          <Text style={styles.remountTitle}>
+            Flex Remounting Pipeline (#{req.requestId})
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={styles.remountFeePill}>₹{req.totalAmount}</Text>
+          <View style={styles.expandChevron}>
+            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color="#4f46e5" />
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={{ marginTop: 10 }}>
+          {/* Moving Line Stepper */}
+          <View style={styles.remountStepperCard}>
+            <Text style={styles.stepperSubhead}>LIVE PROGRESS LINE</Text>
+
+            {/* Connecting Bar */}
+            <View style={styles.remountLineWrap}>
+              <View style={styles.remountLineBg} />
+              <View
+                style={[
+                  styles.remountLineProgress,
+                  { width: `${Math.min(100, (currentStageIndex / 4) * 100)}%` }
+                ]}
+              />
+            </View>
+
+            {/* Stages Row */}
+            <View style={styles.remountStagesRow}>
+              {stages.map((stage, idx) => {
+                const isDone = currentStageIndex > idx;
+                const isActive = Math.floor(currentStageIndex) === idx || (idx === 3 && currentStageIndex === 3.5);
+                return (
+                  <View key={stage.key} style={styles.remountStageItem}>
+                    <View
+                      style={[
+                        styles.remountStageNode,
+                        isDone && styles.remountNodeDone,
+                        isActive && styles.remountNodeActive
+                      ]}
+                    >
+                      <Ionicons
+                        name={isDone ? 'checkmark-circle' : stage.icon}
+                        size={15}
+                        color={isDone || isActive ? '#fff' : '#94a3b8'}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.remountStageText,
+                        isActive && styles.remountStageActiveText,
+                        isDone && styles.remountStageDoneText
+                      ]}
+                    >
+                      {stage.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Pricing Formula Card */}
+          <View style={styles.remountCalcBox}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.calcLabel}>BILLBOARD AREA & CHARGE</Text>
+              <Text style={styles.calcFormula}>
+                {req.dimensions?.width}ft × {req.dimensions?.height}ft = {req.areaSqFt} sq.ft @ ₹3/sq.ft
+              </Text>
+            </View>
+            <Text style={styles.calcTotal}>₹{req.totalAmount}</Text>
+          </View>
+
+          {/* Replacement proof photo */}
+          {req.proofPhotoUrl ? (
+            <View style={styles.remountProofCard}>
+              <Image source={{ uri: req.proofPhotoUrl }} style={styles.remountProofImg} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.remountProofTitle}>Site Remounting Proof</Text>
+                <Text style={styles.remountProofDate}>{req.proofCaptureDateTime}</Text>
+                {req.proofNotes ? <Text style={styles.remountProofNotes}>"{req.proofNotes}"</Text> : null}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Actions */}
+          {req.paymentStatus !== 'paid' && (
+            <TouchableOpacity
+              onPress={handlePay}
+              disabled={paying}
+              style={styles.remountPayBtn}
+            >
+              {paying ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="card" size={14} color="#fff" />
+                  <Text style={styles.remountPayBtnText}>
+                    Pay ₹{req.totalAmount} Remounting Fee (₹3/sq.ft)
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {req.status === 'proof_uploaded' && (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              <TouchableOpacity
+                onPress={() => setShowIssueBox(!showIssueBox)}
+                style={styles.remountIssueBtn}
+              >
+                <Text style={styles.remountIssueBtnText}>Report Issue</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleVerify(true)}
+                disabled={verifying}
+                style={styles.remountVerifyBtn}
+              >
+                {verifying ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={14} color="#fff" />
+                    <Text style={styles.remountVerifyBtnText}>Verify & Make Live</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {showIssueBox && (
+            <View style={styles.issueBoxWrap}>
+              <Text style={styles.issueBoxLabel}>Describe issue with remounting:</Text>
+              <TextInput
+                style={styles.issueInput}
+                placeholder="e.g. Wrinkled on top corner, needs re-tensioning..."
+                value={issueNotes}
+                onChangeText={setIssueNotes}
+              />
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+                <TouchableOpacity onPress={() => setShowIssueBox(false)} style={{ padding: 6 }}>
+                  <Text style={{ fontSize: 12, color: '#64748b' }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleVerify(false)} style={styles.issueSubmitBtn}>
+                  <Text style={styles.issueSubmitBtnText}>Send Feedback</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function MyBookingsScreen({ navigation }) {
   const { isAuthenticated, user } = useAuth();
   const [bookings, setBookings] = useState([]);
@@ -344,6 +606,14 @@ export default function MyBookingsScreen({ navigation }) {
   const [paymentMethod, setPaymentMethod] = useState('online_upi'); // 'online_upi' | 'online_card' | 'neft' | 'cheque'
   const [transRef, setTransRef] = useState('');
   const [paying, setPaying] = useState(false);
+
+  // Remount Modal State
+  const [remountBooking, setRemountBooking] = useState(null);
+  const [remountCampaignName, setRemountCampaignName] = useState('');
+  const [remountCreativeUrl, setRemountCreativeUrl] = useState('');
+  const [remountPickupAddress, setRemountPickupAddress] = useState('');
+  const [remountNotes, setRemountNotes] = useState('');
+  const [submittingRemount, setSubmittingRemount] = useState(false);
 
   const fetchBookings = async () => {
     if (!isAuthenticated) return;
@@ -407,6 +677,36 @@ export default function MyBookingsScreen({ navigation }) {
       Alert.alert('Payment Error', err.response?.data?.message || 'Could not process payment.');
     } finally {
       setPaying(false);
+    }
+  };
+
+  // Handle Flex Remounting Request
+  const handleSubmitRemount = async () => {
+    if (!remountBooking) return;
+    setSubmittingRemount(true);
+    try {
+      const res = await mobileApi.post(`/bookings/${remountBooking._id}/remounting`, {
+        campaignName: remountCampaignName.trim(),
+        newCreativeUrl: remountCreativeUrl.trim(),
+        pickupAddress: remountPickupAddress.trim(),
+        notes: remountNotes.trim()
+      });
+      if (res.data.success) {
+        Alert.alert(
+          'Remounting Requested! 🎉',
+          `Your request has been placed. Total fee: ₹${res.data.remountingRequest?.totalAmount} (${res.data.remountingRequest?.areaSqFt} sq.ft @ ₹3/sq.ft).`
+        );
+        setRemountBooking(null);
+        setRemountCampaignName('');
+        setRemountCreativeUrl('');
+        setRemountPickupAddress('');
+        setRemountNotes('');
+        fetchBookings();
+      }
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to submit remounting request.');
+    } finally {
+      setSubmittingRemount(false);
     }
   };
 
@@ -581,7 +881,21 @@ export default function MyBookingsScreen({ navigation }) {
                     </Text>
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {/* REMOUNT FLEX BUTTON (For ongoing active bookings) */}
+                    {(isActive || isMountingWindow || isVerificationPending) && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setRemountBooking(item);
+                          setRemountCampaignName(item.campaignName || '');
+                        }}
+                        style={styles.remountTriggerBtn}
+                      >
+                        <Ionicons name="construct" size={13} color="#4f46e5" />
+                        <Text style={styles.remountTriggerBtnText}>Remount (₹3/sq.ft)</Text>
+                      </TouchableOpacity>
+                    )}
+
                     {h?.location?.googleMapsUrl && (
                       <TouchableOpacity
                         onPress={() => Linking.openURL(h.location.googleMapsUrl)}
@@ -604,6 +918,16 @@ export default function MyBookingsScreen({ navigation }) {
                     )}
                   </View>
                 </View>
+
+                {/* FLEX REMOUNTING PIPELINE (WITH MOVING LINE) */}
+                {item.remountingRequests && item.remountingRequests.length > 0 && (
+                  <View style={{ marginTop: 10 }}>
+                    <MobileRemountingTracker
+                      booking={item}
+                      onRefresh={fetchBookings}
+                    />
+                  </View>
+                )}
 
                 {/* MOUNTING TRACKER PIPELINE (Visible during mounting_window, verification_pending, or active) */}
                 {hasMountingPipeline && (
@@ -714,6 +1038,84 @@ export default function MyBookingsScreen({ navigation }) {
                 <Text style={styles.modalSubmitBtnText}>
                   Confirm Payment (₹{(selectedBooking?.totalAmount || 0).toLocaleString('en-IN')})
                 </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ============================================================== */}
+      {/* REMOUNT REQUEST MODAL (₹3 / SQ.FT RATE) */}
+      {/* ============================================================== */}
+      <Modal visible={!!remountBooking} animationType="slide" transparent>
+        <SafeAreaView style={styles.modalBackdrop}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalHeading}>Request Flex Remounting</Text>
+                <Text style={styles.modalSubheading}>
+                  Booking #{remountBooking?.bookingNumber}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setRemountBooking(null)}>
+                <Ionicons name="close" size={24} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Price banner */}
+            <View style={[styles.modalAmountBox, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
+              <Text style={[styles.modalAmountLabel, { color: '#4338ca' }]}>STANDARD REMOUNTING RATE</Text>
+              <Text style={[styles.modalAmountVal, { color: '#312e81' }]}>
+                ₹{((Number(remountBooking?.hoardingId?.dimensions?.width) || 20) * (Number(remountBooking?.hoardingId?.dimensions?.height) || 10) * 3).toLocaleString('en-IN')}
+              </Text>
+              <Text style={[styles.modalNotice, { color: '#4f46e5' }]}>
+                {((Number(remountBooking?.hoardingId?.dimensions?.width) || 20) * (Number(remountBooking?.hoardingId?.dimensions?.height) || 10))} sq.ft @ ₹3/sq.ft fixed rate
+              </Text>
+            </View>
+
+            <ScrollView style={{ maxHeight: 260, marginVertical: 8 }}>
+              <Text style={styles.inputLabel}>CAMPAIGN / CREATIVE TITLE</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Festive Offer Campaign"
+                value={remountCampaignName}
+                onChangeText={setRemountCampaignName}
+              />
+
+              <Text style={styles.inputLabel}>NEW CREATIVE ARTWORK URL</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="https://... (Artwork URL)"
+                value={remountCreativeUrl}
+                onChangeText={setRemountCreativeUrl}
+              />
+
+              <Text style={styles.inputLabel}>FLEX PICKUP ADDRESS</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Where crew will pick up printed flex..."
+                value={remountPickupAddress}
+                onChangeText={setRemountPickupAddress}
+              />
+
+              <Text style={styles.inputLabel}>SPECIAL INSTRUCTIONS (OPTIONAL)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Rigging instructions..."
+                value={remountNotes}
+                onChangeText={setRemountNotes}
+              />
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={handleSubmitRemount}
+              disabled={submittingRemount}
+              style={[styles.modalSubmitBtn, { backgroundColor: '#4f46e5' }]}
+            >
+              {submittingRemount ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.modalSubmitBtnText}>Submit Remounting Request</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -1395,5 +1797,298 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '900',
+  },
+
+  // Flex Remounting Styles
+  remountContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e0e7ff',
+    padding: 12,
+    marginTop: 10,
+  },
+  remountHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  remountTag: {
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  remountTagText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  remountRatePill: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  remountRateText: {
+    color: '#92400e',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  remountTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginTop: 3,
+  },
+  remountFeePill: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#059669',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  expandChevron: {
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  remountStepperCard: {
+    backgroundColor: '#f8fafc',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginTop: 8,
+  },
+  stepperSubhead: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#64748b',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  remountLineWrap: {
+    height: 4,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 2,
+    marginHorizontal: 16,
+    position: 'relative',
+    marginTop: 12,
+  },
+  remountLineBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#e2e8f0',
+  },
+  remountLineProgress: {
+    height: '100%',
+    backgroundColor: '#10b981',
+    borderRadius: 2,
+  },
+  remountStagesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: -12,
+  },
+  remountStageItem: {
+    alignItems: 'center',
+    width: 54,
+  },
+  remountStageNode: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  remountNodeDone: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
+  },
+  remountNodeActive: {
+    backgroundColor: '#4f46e5',
+    borderColor: '#4f46e5',
+  },
+  remountStageText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94a3b8',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  remountStageActiveText: {
+    color: '#4f46e5',
+    fontWeight: '900',
+  },
+  remountStageDoneText: {
+    color: '#059669',
+    fontWeight: '800',
+  },
+  remountCalcBox: {
+    backgroundColor: '#f5f3ff',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  calcLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#6d28d9',
+  },
+  calcFormula: {
+    fontSize: 11,
+    color: '#4c1d95',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  calcTotal: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#059669',
+  },
+  remountProofCard: {
+    flexDirection: 'row',
+    backgroundColor: '#faf5ff',
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e9d5ff',
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  remountProofImg: {
+    width: 60,
+    height: 45,
+    borderRadius: 6,
+    backgroundColor: '#e2e8f0',
+  },
+  remountProofTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#581c87',
+  },
+  remountProofDate: {
+    fontSize: 10,
+    color: '#7e22ce',
+    marginTop: 2,
+  },
+  remountProofNotes: {
+    fontSize: 10,
+    fontStyle: 'italic',
+    color: '#64748b',
+    marginTop: 2,
+  },
+  remountPayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#4f46e5',
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  remountPayBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  remountIssueBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  remountIssueBtnText: {
+    color: '#dc2626',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  remountVerifyBtn: {
+    flex: 1,
+    backgroundColor: '#16a34a',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  remountVerifyBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  remountTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eef2ff',
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  remountTriggerBtnText: {
+    color: '#4f46e5',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  issueBoxWrap: {
+    backgroundColor: '#fff1f2',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+    marginTop: 8,
+  },
+  issueBoxLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#9f1239',
+    marginBottom: 4,
+  },
+  issueInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    borderRadius: 8,
+    padding: 8,
+    fontSize: 12,
+    color: '#0f172a',
+  },
+  issueSubmitBtn: {
+    backgroundColor: '#e11d48',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  issueSubmitBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
   },
 });

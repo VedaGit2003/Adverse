@@ -15,9 +15,12 @@ import {
   AlertCircle,
   X,
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  Wrench
 } from 'lucide-react';
 import MountingTracker from '../../components/MountingTracker';
+import RemountingTracker from '../../components/RemountingTracker';
+import RequestRemountingModal from '../../components/RequestRemountingModal';
 
 export default function MyBookingsPage() {
   const { user } = useAuth();
@@ -25,6 +28,7 @@ export default function MyBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedBookingId, setExpandedBookingId] = useState(null);
+  const [remountModalBooking, setRemountModalBooking] = useState(null);
 
   // Pay Modal State
   const [payModalBooking, setPayModalBooking] = useState(null);
@@ -194,6 +198,7 @@ export default function MyBookingsPage() {
               const isApproved = b.bookingStatus === 'approved';
               const isRequested = b.bookingStatus === 'requested';
               const isCompleted = b.bookingStatus === 'completed';
+              const isOngoing = ['active', 'confirmed', 'mounting_window', 'verification_pending'].includes(b.bookingStatus);
               const isMountingOrLater = ['mounting_window', 'verification_pending', 'active', 'confirmed', 'completed'].includes(b.bookingStatus);
               const isExpanded = expandedBookingId === b._id || isMountingOrLater || isApproved;
 
@@ -259,7 +264,20 @@ export default function MyBookingsPage() {
                         </div>
 
                         {/* Action buttons */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          {/* REMOUNT FLEX BUTTON (For ongoing active bookings) */}
+                          {isOngoing && (
+                            <button
+                              type="button"
+                              onClick={() => setRemountModalBooking(b)}
+                              className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-black text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5"
+                              title="Request New Flex Remounting (₹3 / sq.ft)"
+                            >
+                              <Wrench className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Remount Flex (₹3/sq.ft)</span>
+                            </button>
+                          )}
+
                           {/* PAY NOW BUTTON (Available ONLY after seller approves) */}
                           {isApproved && (
                             <button
@@ -308,9 +326,20 @@ export default function MyBookingsPage() {
                     )}
                   </div>
 
-                  {/* Expanded Section (Mounting Tracker, Timeline, Specs) */}
+                  {/* Expanded Section (Mounting Tracker, Remounting Tracker, Timeline, Specs) */}
                   {isExpanded && (
                     <div className="border-t border-slate-100 bg-slate-50/50 p-6 space-y-6">
+                      {/* FLEX REMOUNTING TRACKER (WITH MOVING LINE) */}
+                      {b.remountingRequests && b.remountingRequests.length > 0 && (
+                        <div>
+                          <RemountingTracker
+                            booking={b}
+                            userRole="customer"
+                            onUpdate={() => fetchBookings(true)}
+                          />
+                        </div>
+                      )}
+
                       {/* MOUNTING TRACKER (Visible during mounting window, verification, or active) */}
                       {isMountingOrLater && (
                         <div>
@@ -513,6 +542,14 @@ export default function MyBookingsPage() {
           </div>
         </div>
       )}
+
+      {/* Request Remounting Modal */}
+      <RequestRemountingModal
+        booking={remountModalBooking}
+        isOpen={Boolean(remountModalBooking)}
+        onClose={() => setRemountModalBooking(null)}
+        onSuccess={() => fetchBookings(true)}
+      />
     </div>
   );
 }
