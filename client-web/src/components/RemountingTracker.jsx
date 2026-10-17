@@ -24,7 +24,7 @@ export default function RemountingTracker({
   booking,
   userRole = 'customer',
   onUpdate,
-  defaultOpen = true
+  defaultOpen = false
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [loadingAction, setLoadingAction] = useState(false);
@@ -896,3 +896,4 @@ export default function RemountingTracker({
     </div>
   );
 }
+
