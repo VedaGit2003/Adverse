@@ -48,6 +48,15 @@ export default function RemountingTracker({
   const [uploadingProof, setUploadingProof] = useState(false);
   const [proofGps, setProofGps] = useState(null);
   const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsFeatureEnabled, setGpsFeatureEnabled] = useState(true);
+
+  useEffect(() => {
+    api.get('/settings').then(res => {
+      if (res.data?.success && res.data?.settings) {
+        setGpsFeatureEnabled(res.data.settings.gpsVerificationEnabled !== false);
+      }
+    }).catch(() => {});
+  }, []);
   const fileInputRef = useRef(null);
 
   const handleDetectBrowserGps = () => {

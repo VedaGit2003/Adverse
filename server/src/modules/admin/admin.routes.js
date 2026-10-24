@@ -13,6 +13,7 @@ const {
   getModificationRequests,
   moderateModificationRequest
 } = require('./admin.controller');
+const { getSettings, updateSettings } = require('../settings/setting.controller');
 const { verifyToken, authorizeRoles } = require('../../middlewares/auth.middleware');
 
 router.use(verifyToken);
@@ -29,5 +30,7 @@ router.get('/cover-deletion-requests', getCoverDeletionRequests);
 router.put('/cover-deletion-requests/:id', moderateCoverDeletionRequest);
 router.get('/modification-requests', getModificationRequests);
 router.put('/modification-requests/:id', moderateModificationRequest);
+router.get('/settings', getSettings);
+router.put('/settings', updateSettings);
 
 module.exports = router;

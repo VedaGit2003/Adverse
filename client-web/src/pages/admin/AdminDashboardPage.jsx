@@ -32,7 +32,10 @@ import {
   ChevronUp,
   Trash2,
   Check,
-  Wrench
+  Wrench,
+  Sliders,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import HoardingMap from '../../components/HoardingMap';
 import MountingTracker from '../../components/MountingTracker';
@@ -45,6 +48,15 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [adminRemountModalBooking, setAdminRemountModalBooking] = useState(null);
+
+  // Platform Settings & Geofence Feature Toggle
+  const [platformSettings, setPlatformSettings] = useState({
+    gpsVerificationEnabled: true,
+    geofenceRadiusMeters: 500,
+    watermarkEnabled: true,
+    lastUpdatedByName: ''
+  });
+  const [updatingSettings, setUpdatingSettings] = useState(false);
 
   // Cover photo deletion requests
   const [coverDeletionRequests, setCoverDeletionRequests] = useState([]);
@@ -638,6 +650,25 @@ export default function AdminDashboardPage() {
                 0
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition ${
+              activeTab === 'settings'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sliders className="w-4 h-4 text-emerald-600" />
+            <span>Geofence & Feature Controls</span>
+            <span
+              className={`ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-black uppercase ${
+                platformSettings.gpsVerificationEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {platformSettings.gpsVerificationEnabled ? 'ON' : 'OFF'}
+            </span>
           </button>
         </div>
 
@@ -1682,6 +1713,160 @@ export default function AdminDashboardPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 7: GEOFENCE & FEATURE CONTROLS */}
+        {/* ============================================================== */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-100 gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-100 text-emerald-900">
+                      System Governance
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400">• Real-Time Feature Flag</span>
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mt-1">
+                    GPS Geofence & Watermark Verification Controls
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
+                    Control whether media owners and site riggers are strictly required to be on-site within the geofence radius to upload mounting and flex replacement proofs.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-xs font-bold text-slate-600">Feature Status:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleGpsFeature(!platformSettings.gpsVerificationEnabled)}
+                    disabled={updatingSettings}
+                    className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      platformSettings.gpsVerificationEnabled ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        platformSettings.gpsVerificationEnabled ? 'translate-x-6' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-sm font-black uppercase ${platformSettings.gpsVerificationEnabled ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {platformSettings.gpsVerificationEnabled ? 'SWITCHED ON' : 'SWITCHED OFF'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Status Banner */}
+              <div className={`p-4 rounded-2xl border ${
+                platformSettings.gpsVerificationEnabled
+                  ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                  : 'bg-amber-50/70 border-amber-200 text-amber-900'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">{platformSettings.gpsVerificationEnabled ? '🛡️' : '⚠️'}</span>
+                  <div className="text-xs space-y-1">
+                    <p className="font-extrabold text-sm">
+                      {platformSettings.gpsVerificationEnabled
+                        ? 'GPS Geofencing & Watermarking is Active'
+                        : 'GPS Geofencing is Temporarily Disabled'}
+                    </p>
+                    <p className="text-slate-600">
+                      {platformSettings.gpsVerificationEnabled
+                        ? 'All mobile and web mounting proof submissions will capture location coordinates, calculate distance against registered billboard coordinates, and burn tamper-proof watermarks.'
+                        : 'Sellers can upload photos from camera or gallery without requiring device GPS permissions or triggering geofence proximity warnings.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Configuration Form */}
+              <form onSubmit={handleSaveAllSettings} className="space-y-6 pt-2">
+                {/* Geofence Radius */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-1">
+                    On-Site Geofence Radius Threshold (Meters)
+                  </label>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Maximum allowed distance between the phone/camera GPS and the billboard's registered coordinates to be marked as "Verified On-Site".
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    {[100, 250, 500, 1000, 2000].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setPlatformSettings(prev => ({ ...prev, geofenceRadiusMeters: preset }))}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                          platformSettings.geofenceRadiusMeters === preset
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {preset >= 1000 ? `${preset / 1000} km` : `${preset} meters`}
+                        {preset === 500 ? ' (Default)' : ''}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="max-w-xs">
+                    <input
+                      type="number"
+                      min={50}
+                      max={10000}
+                      value={platformSettings.geofenceRadiusMeters}
+                      onChange={(e) => setPlatformSettings(prev => ({ ...prev, geofenceRadiusMeters: Number(e.target.value) }))}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Cloudinary Watermark Stamping Toggle */}
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <div>
+                    <span className="block text-sm font-bold text-slate-800">
+                      Cloudinary Visual Watermark Stamping
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      Physically burns the GPS coordinates, date & time, distance, and billboard ID into the bottom of the photo.
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setPlatformSettings(prev => ({ ...prev, watermarkEnabled: !prev.watermarkEnabled }))}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      platformSettings.watermarkEnabled ? 'bg-indigo-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        platformSettings.watermarkEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Save Button */}
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs text-slate-400">
+                    {platformSettings.lastUpdatedByName ? `Last updated by: ${platformSettings.lastUpdatedByName}` : ''}
+                  </span>
+
+                  <button
+                    type="submit"
+                    disabled={updatingSettings}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-2"
+                  >
+                    {updatingSettings ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                    <span>{updatingSettings ? 'Saving...' : 'Save Configuration Changes'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 

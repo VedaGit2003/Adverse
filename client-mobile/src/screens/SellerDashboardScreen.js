@@ -339,6 +339,16 @@ export default function SellerDashboardScreen({ navigation }) {
 
   // Proof Modal Form
   const [selectedBookingForProof, setSelectedBookingForProof] = useState(null);
+  const [gpsFeatureEnabled, setGpsFeatureEnabled] = useState(true);
+
+  useEffect(() => {
+    mobileApi.get('/settings').then(res => {
+      if (res.data?.success && res.data?.settings) {
+        setGpsFeatureEnabled(res.data.settings.gpsVerificationEnabled !== false);
+      }
+    }).catch(() => {});
+  }, []);
+
   const [proofForm, setProofForm] = useState({
     proofPhotoUrl: '',
     capturedAt: '',
@@ -740,33 +750,35 @@ export default function SellerDashboardScreen({ navigation }) {
           return;
         }
 
-        // Request high-accuracy GPS coordinates for on-site watermark
-        try {
-          const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
-          if (locStatus === 'granted') {
-            const loc = await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.High
-            });
-            let addressStr = '';
-            try {
-              const rev = await Location.reverseGeocodeAsync({
-                latitude: loc.coords.latitude,
-                longitude: loc.coords.longitude
+        // Request high-accuracy GPS coordinates if feature is enabled by Admin
+        if (gpsFeatureEnabled) {
+          try {
+            const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
+            if (locStatus === 'granted') {
+              const loc = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.High
               });
-              if (rev && rev[0]) {
-                addressStr = [rev[0].name, rev[0].street, rev[0].city, rev[0].region].filter(Boolean).join(', ');
-              }
-            } catch (revErr) {}
+              let addressStr = '';
+              try {
+                const rev = await Location.reverseGeocodeAsync({
+                  latitude: loc.coords.latitude,
+                  longitude: loc.coords.longitude
+                });
+                if (rev && rev[0]) {
+                  addressStr = [rev[0].name, rev[0].street, rev[0].city, rev[0].region].filter(Boolean).join(', ');
+                }
+              } catch (revErr) {}
 
-            gpsLocation = {
-              latitude: loc.coords.latitude,
-              longitude: loc.coords.longitude,
-              accuracy: Math.round(loc.coords.accuracy || 0),
-              deviceAddress: addressStr
-            };
+              gpsLocation = {
+                latitude: loc.coords.latitude,
+                longitude: loc.coords.longitude,
+                accuracy: Math.round(loc.coords.accuracy || 0),
+                deviceAddress: addressStr
+              };
+            }
+          } catch (locErr) {
+            console.warn('[GPS] Could not obtain GPS lock:', locErr.message);
           }
-        } catch (locErr) {
-          console.warn('[GPS] Could not obtain GPS lock:', locErr.message);
         }
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -2180,6 +2192,15 @@ export default function SellerDashboardScreen({ navigation }) {
                 Upload a real photo of the mounted hoarding. Upon submitting, a timestamp will be recorded and the 4-hour customer verification window will automatically start.
               </Text>
             </View>
+
+            {!gpsFeatureEnabled && (
+              <View style={[styles.proofNoticeBox, { backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }]}>
+                <Ionicons name="shield-outline" size={16} color="#64748b" />
+                <Text style={[styles.proofNoticeText, { color: '#475569' }]}>
+                  GPS Geofence verification is currently turned OFF by Admin. Standard camera or gallery photos accepted without location checks.
+                </Text>
+              </View>
+            )}
 
             {/* Cloudinary Camera & Gallery Action Box */}
             <View style={styles.cloudUploadBox}>

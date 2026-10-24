@@ -32,6 +32,15 @@ export default function MountingTracker({
   const [proofNotes, setProofNotes] = useState('');
   const [proofGps, setProofGps] = useState(null);
   const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsFeatureEnabled, setGpsFeatureEnabled] = useState(true);
+
+  useEffect(() => {
+    api.get('/settings').then(res => {
+      if (res.data?.success && res.data?.settings) {
+        setGpsFeatureEnabled(res.data.settings.gpsVerificationEnabled !== false);
+      }
+    }).catch(() => {});
+  }, []);
 
   const handleDetectBrowserGps = () => {
     if (!navigator.geolocation) {
@@ -570,26 +579,33 @@ export default function MountingTracker({
           )}
 
           {/* GPS Geofence Verification Pill */}
-          <div className="flex flex-wrap items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs gap-2">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-700">📍 On-Site Geofence Lock:</span>
-              {proofGps ? (
-                <span className="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  {proofGps.latitude.toFixed(4)}° N, {proofGps.longitude.toFixed(4)}° E (±{proofGps.accuracy}m)
-                </span>
-              ) : (
-                <span className="text-slate-400 italic">Not attached (Optional on Web)</span>
-              )}
+          {gpsFeatureEnabled ? (
+            <div className="flex flex-wrap items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-700">📍 On-Site Geofence Lock:</span>
+                {proofGps ? (
+                  <span className="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    {proofGps.latitude.toFixed(4)}° N, {proofGps.longitude.toFixed(4)}° E (±{proofGps.accuracy}m)
+                  </span>
+                ) : (
+                  <span className="text-slate-400 italic">Not attached (Optional on Web)</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleDetectBrowserGps}
+                disabled={detectingGps}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg font-bold text-slate-700 transition"
+              >
+                {detectingGps ? 'Detecting GPS...' : proofGps ? '✓ Re-check GPS' : '📍 Detect Current GPS'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleDetectBrowserGps}
-              disabled={detectingGps}
-              className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg font-bold text-slate-700 transition"
-            >
-              {detectingGps ? 'Detecting GPS...' : proofGps ? '✓ Re-check GPS' : '📍 Detect Current GPS'}
-            </button>
-          </div>
+          ) : (
+            <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs flex items-center gap-2">
+              <span>ℹ️</span>
+              <span>GPS Geofence verification is currently turned OFF by Admin. Standard photo uploads accepted.</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div>

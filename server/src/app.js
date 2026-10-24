@@ -10,6 +10,7 @@ const bookingRoutes = require('./modules/bookings/booking.routes');
 const paymentRoutes = require('./modules/payments/payment.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const uploadRoutes = require('./modules/upload/upload.routes');
+const settingRoutes = require('./modules/settings/setting.routes');
 
 const { notFoundHandler, errorHandler } = require('./middlewares/error.middleware');
 
@@ -38,6 +39,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/settings', settingRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -2,6 +2,7 @@ const Booking = require('../../models/Booking');
 const Hoarding = require('../../models/Hoarding');
 const Payment = require('../../models/Payment');
 const { calculateDistanceKm } = require('../../utils/geo');
+const { getPlatformSettings } = require('../settings/setting.controller');
 const {
   isCloudinaryConfigured,
   uploadDataUriToCloudinary,
@@ -504,34 +505,49 @@ exports.uploadMountingProof = async (req, res, next) => {
       hoardingLat = hoarding.location.coordinates[1];
     }
 
+    // Fetch Admin Platform Settings (Feature Toggle)
+    const platformConfig = await getPlatformSettings();
+    const isGpsActive = platformConfig?.gpsVerificationEnabled !== false;
+    const allowedRadiusMeters = platformConfig?.geofenceRadiusMeters || 500;
+    const isWatermarkActive = platformConfig?.watermarkEnabled !== false;
+
     let distanceMeters = null;
     let isWithinGeofence = null;
     let verifiedOnSite = false;
 
     const hasCoords = latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null;
 
-    if (hasCoords && hoardingLat !== null && hoardingLng !== null) {
+    if (isGpsActive && hasCoords && hoardingLat !== null && hoardingLng !== null) {
       const distKm = calculateDistanceKm(Number(latitude), Number(longitude), hoardingLat, hoardingLng);
       distanceMeters = Math.round(distKm * 1000);
-      isWithinGeofence = distanceMeters <= 500; // 500m geofence radius
+      isWithinGeofence = distanceMeters <= allowedRadiusMeters;
       verifiedOnSite = isWithinGeofence;
+    } else if (!isGpsActive) {
+      // Feature toggled OFF by Admin: bypass proximity enforcement
+      isWithinGeofence = true;
+      verifiedOnSite = false;
     }
 
     let finalPhotoUrl = proofPhotoUrl;
     if (proofPhotoUrl && isCloudinaryConfigured) {
       try {
-        const cloudRes = await uploadWatermarkedProofToCloudinary(proofPhotoUrl, {
-          folder: 'adverse/mounting_proofs',
-          hoardingCode: hoarding?.hoardingCode || hoarding?.title || 'HOARDING',
-          latitude: hasCoords ? Number(latitude) : null,
-          longitude: hasCoords ? Number(longitude) : null,
-          distanceMeters,
-          isWithinGeofence,
-          timestamp: now
-        });
-        finalPhotoUrl = cloudRes.secure_url;
+        if (isGpsActive && isWatermarkActive) {
+          const cloudRes = await uploadWatermarkedProofToCloudinary(proofPhotoUrl, {
+            folder: 'adverse/mounting_proofs',
+            hoardingCode: hoarding?.hoardingCode || hoarding?.title || 'HOARDING',
+            latitude: hasCoords ? Number(latitude) : null,
+            longitude: hasCoords ? Number(longitude) : null,
+            distanceMeters,
+            isWithinGeofence,
+            timestamp: now
+          });
+          finalPhotoUrl = cloudRes.secure_url;
+        } else {
+          const cloudRes = await uploadDataUriToCloudinary(proofPhotoUrl, { folder: 'adverse/mounting_proofs' });
+          finalPhotoUrl = cloudRes.secure_url;
+        }
       } catch (cloudErr) {
-        console.error('[MountingProof] Failed to upload watermarked proof to Cloudinary:', cloudErr.message);
+        console.error('[MountingProof] Failed to upload proof to Cloudinary:', cloudErr.message);
         if (proofPhotoUrl.startsWith('data:image/')) {
           try {
             const fallbackRes = await uploadDataUriToCloudinary(proofPhotoUrl, { folder: 'adverse/mounting_proofs' });
