@@ -30,6 +30,31 @@ export default function MountingTracker({
   const [proofPhotoUrl, setProofPhotoUrl] = useState('');
   const [proofCaptureDateTime, setProofCaptureDateTime] = useState('');
   const [proofNotes, setProofNotes] = useState('');
+  const [proofGps, setProofGps] = useState(null);
+  const [detectingGps, setDetectingGps] = useState(false);
+
+  const handleDetectBrowserGps = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+    setDetectingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setProofGps({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 0)
+        });
+        setDetectingGps(false);
+      },
+      (err) => {
+        alert('Could not get GPS location: ' + err.message);
+        setDetectingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
   const [verifyNotes, setVerifyNotes] = useState('');
   const [showRejectBox, setShowRejectBox] = useState(false);
   const [timeLeftMounting, setTimeLeftMounting] = useState('');
@@ -144,11 +169,18 @@ export default function MountingTracker({
         minute: '2-digit'
       });
 
-      await api.post(`/bookings/${booking._id}/mounting-proof`, {
+      const res = await api.post(`/bookings/${booking._id}/mounting-proof`, {
         proofPhotoUrl: proofPhotoUrl.trim(),
         proofCaptureDateTime: captureTime,
-        notes: proofNotes
+        notes: proofNotes,
+        latitude: proofGps?.latitude,
+        longitude: proofGps?.longitude,
+        accuracy: proofGps?.accuracy,
+        source: proofGps ? 'web_geolocation' : 'manual'
       });
+      if (res.data?.verifiedOnSite) {
+        alert(`🟢 On-Site Verified: Photo captured ${res.data.distanceMeters}m from billboard.`);
+      }
       setProofPhotoUrl('');
       setProofCaptureDateTime('');
       setProofNotes('');
@@ -537,6 +569,28 @@ export default function MountingTracker({
             </div>
           )}
 
+          {/* GPS Geofence Verification Pill */}
+          <div className="flex flex-wrap items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-700">📍 On-Site Geofence Lock:</span>
+              {proofGps ? (
+                <span className="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {proofGps.latitude.toFixed(4)}° N, {proofGps.longitude.toFixed(4)}° E (±{proofGps.accuracy}m)
+                </span>
+              ) : (
+                <span className="text-slate-400 italic">Not attached (Optional on Web)</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleDetectBrowserGps}
+              disabled={detectingGps}
+              className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg font-bold text-slate-700 transition"
+            >
+              {detectingGps ? 'Detecting GPS...' : proofGps ? '✓ Re-check GPS' : '📍 Detect Current GPS'}
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div>
               <label className="block font-bold text-slate-700 mb-1">Proof Photo URL or Cloud Link *</label>
@@ -619,21 +673,50 @@ export default function MountingTracker({
                 alt="Hoarding Mounting Proof"
                 className="w-36 h-24 object-cover rounded-lg border border-slate-200 shadow-2xs shrink-0"
               />
-              <div className="text-xs space-y-1">
-                <div className="font-bold text-slate-900">
-                  Proof Photo Capture Timestamp: <span className="font-mono text-purple-700">{m.proofCaptureDateTime}</span>
+              <div className="text-xs space-y-2 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-bold text-slate-900">
+                    Capture Timestamp: <span className="font-mono text-purple-700">{m.proofCaptureDateTime}</span>
+                  </div>
+                  {m.proofGeoLocation?.verifiedOnSite ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                      🟢 GPS Verified On-Site ({m.proofGeoLocation.distanceMetersFromHoarding}m)
+                    </span>
+                  ) : m.proofGeoLocation?.isWithinGeofence === false ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                      ⚠️ Captured {m.proofGeoLocation.distanceMetersFromHoarding}m from site
+                    </span>
+                  ) : null}
                 </div>
+
+                {m.proofGeoLocation?.latitude && m.proofGeoLocation?.longitude && (
+                  <div className="flex items-center gap-2 text-[11px] text-slate-600 font-mono">
+                    <span>📍 {m.proofGeoLocation.latitude.toFixed(4)}° N, {m.proofGeoLocation.longitude.toFixed(4)}° E (±{m.proofGeoLocation.accuracy || 5}m)</span>
+                    <a
+                      href={`https://maps.google.com/?q=${m.proofGeoLocation.latitude},${m.proofGeoLocation.longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-600 font-bold hover:underline ml-1"
+                    >
+                      View on Map ↗
+                    </a>
+                  </div>
+                )}
+
                 {m.proofNotes && (
                   <p className="text-slate-500 italic">"{m.proofNotes}"</p>
                 )}
-                <a
-                  href={m.proofPhotoUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" /> Open Full-Resolution Photo
-                </a>
+                <div>
+                  <a
+                    href={m.proofPhotoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Open Full-Resolution Photo
+                  </a>
+                </div>
               </div>
             </div>
           )}

@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import mobileApi from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import MobileHoardingMap from '../components/MobileHoardingMap';
@@ -247,6 +248,21 @@ function SellerMountingTracker({ booking, onRefresh, onOpenProofModal }) {
                 Timestamp: {new Date(m.proofPhotoCapturedAt).toLocaleString('en-IN')}
               </Text>
             )}
+            {m.proofGeoLocation?.verifiedOnSite ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                <Ionicons name="checkmark-circle" size={12} color="#15803d" />
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#15803d' }}>
+                  🟢 On-Site Verified ({m.proofGeoLocation.distanceMetersFromHoarding}m)
+                </Text>
+              </View>
+            ) : m.proofGeoLocation?.isWithinGeofence === false ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                <Ionicons name="warning" size={12} color="#b45309" />
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#b45309' }}>
+                  ⚠️ Geofence: {m.proofGeoLocation.distanceMetersFromHoarding}m from site
+                </Text>
+              </View>
+            ) : null}
             {m.mountingNotes ? (
               <Text style={styles.sellerProofNotes} numberOfLines={2}>
                 Notes: "{m.mountingNotes}"
@@ -326,7 +342,13 @@ export default function SellerDashboardScreen({ navigation }) {
   const [proofForm, setProofForm] = useState({
     proofPhotoUrl: '',
     capturedAt: '',
-    notes: ''
+    notes: '',
+    latitude: null,
+    longitude: null,
+    accuracy: null,
+    deviceAddress: '',
+    isGpsAttached: false,
+    distanceMeters: null
   });
   const [uploadingProof, setUploadingProof] = useState(false);
   const [uploadingProofImage, setUploadingProofImage] = useState(false);
@@ -651,12 +673,19 @@ export default function SellerDashboardScreen({ navigation }) {
 
   const openProofModal = (booking) => {
     setSelectedBookingForProof(booking);
+    const geo = booking.mountingDetails?.proofGeoLocation || {};
     setProofForm({
-      proofPhotoUrl: booking.mountingDetails?.proofPhotoUrl || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80',
+      proofPhotoUrl: booking.mountingDetails?.proofPhotoUrl || '',
       capturedAt: booking.mountingDetails?.proofPhotoCapturedAt
         ? new Date(booking.mountingDetails.proofPhotoCapturedAt).toLocaleString('en-IN')
         : new Date().toLocaleString('en-IN'),
-      notes: booking.mountingDetails?.mountingNotes || ''
+      notes: booking.mountingDetails?.mountingNotes || booking.mountingDetails?.proofNotes || '',
+      latitude: geo.latitude || null,
+      longitude: geo.longitude || null,
+      accuracy: geo.accuracy || null,
+      deviceAddress: geo.deviceAddress || '',
+      isGpsAttached: Boolean(geo.latitude && geo.longitude),
+      distanceMeters: geo.distanceMetersFromHoarding || null
     });
     setShowProofModal(true);
   };
@@ -668,15 +697,28 @@ export default function SellerDashboardScreen({ navigation }) {
     }
     setUploadingProof(true);
     try {
-      await mobileApi.put(`/bookings/${selectedBookingForProof._id}/mounting-proof`, {
+      const res = await mobileApi.put(`/bookings/${selectedBookingForProof._id}/mounting-proof`, {
         proofPhotoUrl: proofForm.proofPhotoUrl.trim(),
-        capturedAt: new Date().toISOString(),
-        notes: proofForm.notes.trim()
+        proofCaptureDateTime: proofForm.capturedAt || new Date().toLocaleString('en-IN'),
+        notes: proofForm.notes.trim(),
+        latitude: proofForm.latitude,
+        longitude: proofForm.longitude,
+        accuracy: proofForm.accuracy,
+        deviceAddress: proofForm.deviceAddress,
+        source: proofForm.isGpsAttached ? 'mobile_gps' : 'manual'
       });
-      Alert.alert(
-        'Proof Uploaded! 📸',
-        'Photo proof with timestamp has been recorded. The 4-hour customer verification window is now active!'
-      );
+
+      const dist = res.data?.distanceMeters;
+      const verifiedOnSite = res.data?.verifiedOnSite;
+
+      let successMsg = 'Photo proof with timestamp has been recorded. The 4-hour customer verification window is now active!';
+      if (verifiedOnSite) {
+        successMsg = `🟢 GPS Verified On-Site (${dist}m from billboard)! Photo with watermarked coordinates recorded. Verification window active.`;
+      } else if (dist !== null && dist !== undefined) {
+        successMsg = `Proof recorded. Note: Device was ${dist}m from registered billboard location.`;
+      }
+
+      Alert.alert('Proof Stamped & Uploaded! 📍', successMsg);
       setShowProofModal(false);
       fetchSellerData();
     } catch (err) {
@@ -689,11 +731,42 @@ export default function SellerDashboardScreen({ navigation }) {
   // Pick or Capture Proof Photo for Mounting Phase 3 via Cloudinary
   const handlePickProofImage = async (useCamera = false) => {
     try {
+      let gpsLocation = null;
+
       if (useCamera) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
+        const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraStatus !== 'granted') {
           Alert.alert('Permission Denied', 'Camera permission is required to capture mounting proof.');
           return;
+        }
+
+        // Request high-accuracy GPS coordinates for on-site watermark
+        try {
+          const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
+          if (locStatus === 'granted') {
+            const loc = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.High
+            });
+            let addressStr = '';
+            try {
+              const rev = await Location.reverseGeocodeAsync({
+                latitude: loc.coords.latitude,
+                longitude: loc.coords.longitude
+              });
+              if (rev && rev[0]) {
+                addressStr = [rev[0].name, rev[0].street, rev[0].city, rev[0].region].filter(Boolean).join(', ');
+              }
+            } catch (revErr) {}
+
+            gpsLocation = {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              accuracy: Math.round(loc.coords.accuracy || 0),
+              deviceAddress: addressStr
+            };
+          }
+        } catch (locErr) {
+          console.warn('[GPS] Could not obtain GPS lock:', locErr.message);
         }
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -705,8 +778,7 @@ export default function SellerDashboardScreen({ navigation }) {
 
       const result = useCamera
         ? await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
+            allowsEditing: false, // Keep raw authentic view of site
             quality: 0.8,
             base64: true
           })
@@ -721,18 +793,52 @@ export default function SellerDashboardScreen({ navigation }) {
       if (!result.canceled && result.assets && result.assets[0]?.base64) {
         setUploadingProofImage(true);
         const base64Data = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        const res = await mobileApi.post('/upload/base64', {
+
+        const uploadPayload = {
           image: base64Data,
           folder: 'adverse/mounting_proofs'
-        });
+        };
+
+        if (gpsLocation) {
+          uploadPayload.latitude = gpsLocation.latitude;
+          uploadPayload.longitude = gpsLocation.longitude;
+          uploadPayload.accuracy = gpsLocation.accuracy;
+          uploadPayload.hoardingCode =
+            selectedBookingForProof?.hoarding?.hoardingCode ||
+            selectedBookingForProof?.hoardingId?.hoardingCode ||
+            selectedBookingForProof?.hoarding?.title ||
+            'ADVERSE-SITE';
+        }
+
+        const res = await mobileApi.post('/upload/base64', uploadPayload);
 
         if (res.data?.success && res.data?.fileUrl) {
           setProofForm(prev => ({
             ...prev,
             proofPhotoUrl: res.data.fileUrl,
-            capturedAt: new Date().toLocaleString('en-IN')
+            capturedAt: new Date().toLocaleString('en-IN', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            }),
+            latitude: gpsLocation?.latitude || prev.latitude,
+            longitude: gpsLocation?.longitude || prev.longitude,
+            accuracy: gpsLocation?.accuracy || prev.accuracy,
+            deviceAddress: gpsLocation?.deviceAddress || prev.deviceAddress,
+            isGpsAttached: Boolean(gpsLocation || prev.latitude)
           }));
-          Alert.alert('Photo Uploaded! ☁️', 'Proof photo successfully uploaded to Cloudinary CDN.');
+
+          if (gpsLocation) {
+            Alert.alert(
+              'Photo Stamped & Uploaded! 📍',
+              `GPS Geofence attached (${gpsLocation.latitude.toFixed(4)}° N, ${gpsLocation.longitude.toFixed(4)}° E) ±${gpsLocation.accuracy}m.`
+            );
+          } else {
+            Alert.alert('Photo Uploaded! ☁️', 'Proof photo successfully uploaded to Cloudinary CDN.');
+          }
         } else {
           Alert.alert('Upload Failed', res.data?.message || 'Could not upload photo.');
         }
@@ -2147,10 +2253,20 @@ export default function SellerDashboardScreen({ navigation }) {
               <View style={styles.proofModalPreviewWrap}>
                 <Image source={{ uri: proofForm.proofPhotoUrl }} style={styles.proofModalPreviewImg} />
                 <View style={styles.proofModalTimestampOverlay}>
-                  <Ionicons name="time" size={12} color="#fff" />
-                  <Text style={styles.proofModalTimestampText}>
-                    Date & Time Stamp: {proofForm.capturedAt || new Date().toLocaleString('en-IN')}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="time" size={12} color="#fff" />
+                    <Text style={styles.proofModalTimestampText}>
+                      Date & Time Stamp: {proofForm.capturedAt || new Date().toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+                  {proofForm.isGpsAttached && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <Ionicons name="location" size={12} color="#86efac" />
+                      <Text style={[styles.proofModalTimestampText, { color: '#86efac', fontWeight: '800' }]}>
+                        GPS: {proofForm.latitude?.toFixed(4)}° N, {proofForm.longitude?.toFixed(4)}° E (±{proofForm.accuracy}m)
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
             ) : null}

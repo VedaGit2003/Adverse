@@ -1,7 +1,12 @@
 const Booking = require('../../models/Booking');
 const Hoarding = require('../../models/Hoarding');
 const Payment = require('../../models/Payment');
-const { isCloudinaryConfigured, uploadDataUriToCloudinary } = require('../../utils/cloudinary');
+const { calculateDistanceKm } = require('../../utils/geo');
+const {
+  isCloudinaryConfigured,
+  uploadDataUriToCloudinary,
+  uploadWatermarkedProofToCloudinary
+} = require('../../utils/cloudinary');
 
 // ============================================================================
 // CONFIGURABLE DEFAULT TIMINGS & WINDOW DURATIONS
@@ -462,13 +467,22 @@ exports.updateMountingPhase = async (req, res, next) => {
  */
 exports.uploadMountingProof = async (req, res, next) => {
   try {
-    const { proofPhotoUrl, proofCaptureDateTime, notes } = req.body;
+    const {
+      proofPhotoUrl,
+      proofCaptureDateTime,
+      notes,
+      latitude,
+      longitude,
+      accuracy,
+      deviceAddress,
+      source
+    } = req.body;
 
     if (!proofPhotoUrl) {
       return res.status(400).json({ success: false, message: 'Please provide proofPhotoUrl.' });
     }
 
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findById(req.params.id).populate('hoardingId');
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
 
     if (booking.sellerId.toString() !== req.user.id && req.user.role !== 'admin') {
@@ -476,38 +490,108 @@ exports.uploadMountingProof = async (req, res, next) => {
     }
 
     const now = new Date();
-    const verificationExpires = new Date(now.getTime() + DEFAULT_VERIFICATION_WINDOW_HOURS * 60 * 60 * 1000); // Configurable customer verification countdown window (default 4 hours)
+    const verificationExpires = new Date(now.getTime() + DEFAULT_VERIFICATION_WINDOW_HOURS * 60 * 60 * 1000);
+
+    // Calculate GPS Geofence & Proximity to Hoarding
+    const hoarding = booking.hoardingId;
+    let hoardingLng = null;
+    let hoardingLat = null;
+    if (hoarding?.location?.geo?.coordinates?.length >= 2) {
+      hoardingLng = hoarding.location.geo.coordinates[0];
+      hoardingLat = hoarding.location.geo.coordinates[1];
+    } else if (hoarding?.location?.coordinates?.length >= 2) {
+      hoardingLng = hoarding.location.coordinates[0];
+      hoardingLat = hoarding.location.coordinates[1];
+    }
+
+    let distanceMeters = null;
+    let isWithinGeofence = null;
+    let verifiedOnSite = false;
+
+    const hasCoords = latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null;
+
+    if (hasCoords && hoardingLat !== null && hoardingLng !== null) {
+      const distKm = calculateDistanceKm(Number(latitude), Number(longitude), hoardingLat, hoardingLng);
+      distanceMeters = Math.round(distKm * 1000);
+      isWithinGeofence = distanceMeters <= 500; // 500m geofence radius
+      verifiedOnSite = isWithinGeofence;
+    }
 
     let finalPhotoUrl = proofPhotoUrl;
-    if (proofPhotoUrl && proofPhotoUrl.startsWith('data:image/') && isCloudinaryConfigured) {
+    if (proofPhotoUrl && isCloudinaryConfigured) {
       try {
-        const cloudRes = await uploadDataUriToCloudinary(proofPhotoUrl, { folder: 'adverse/mounting_proofs' });
+        const cloudRes = await uploadWatermarkedProofToCloudinary(proofPhotoUrl, {
+          folder: 'adverse/mounting_proofs',
+          hoardingCode: hoarding?.hoardingCode || hoarding?.title || 'HOARDING',
+          latitude: hasCoords ? Number(latitude) : null,
+          longitude: hasCoords ? Number(longitude) : null,
+          distanceMeters,
+          isWithinGeofence,
+          timestamp: now
+        });
         finalPhotoUrl = cloudRes.secure_url;
       } catch (cloudErr) {
-        console.error('[MountingProof] Failed to upload base64 to Cloudinary:', cloudErr.message);
+        console.error('[MountingProof] Failed to upload watermarked proof to Cloudinary:', cloudErr.message);
+        if (proofPhotoUrl.startsWith('data:image/')) {
+          try {
+            const fallbackRes = await uploadDataUriToCloudinary(proofPhotoUrl, { folder: 'adverse/mounting_proofs' });
+            finalPhotoUrl = fallbackRes.secure_url;
+          } catch (e) {
+            console.error('[MountingProof] Fallback upload also failed:', e.message);
+          }
+        }
       }
     }
 
     if (!booking.mountingDetails) booking.mountingDetails = {};
 
+    const formattedStamp = proofCaptureDateTime || now.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
     booking.mountingDetails.mountingStatus = 'completed';
     booking.mountingDetails.confirmationStatus = 'proof_uploaded';
     booking.mountingDetails.proofPhotoUrl = finalPhotoUrl;
-    booking.mountingDetails.proofCaptureDateTime =
-      proofCaptureDateTime || now.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    booking.mountingDetails.proofCaptureDateTime = formattedStamp;
     booking.mountingDetails.proofUploadedAt = now;
     booking.mountingDetails.proofNotes = notes || '';
     booking.mountingDetails.proofUploadedBy = req.user.id;
+
+    // Save GPS Geolocation Audit Trail
+    booking.mountingDetails.proofGeoLocation = {
+      latitude: hasCoords ? Number(latitude) : null,
+      longitude: hasCoords ? Number(longitude) : null,
+      accuracy: accuracy !== undefined && accuracy !== null ? Number(accuracy) : null,
+      distanceMetersFromHoarding: distanceMeters,
+      isWithinGeofence,
+      verifiedOnSite,
+      deviceAddress: deviceAddress || '',
+      source: source || (hasCoords ? 'mobile_gps' : 'manual'),
+      capturedAt: proofCaptureDateTime ? new Date(proofCaptureDateTime) : now
+    };
 
     // Start Customer/Admin Verification Window
     booking.mountingDetails.verificationWindowStartedAt = now;
     booking.mountingDetails.verificationWindowExpiresAt = verificationExpires;
     booking.bookingStatus = 'verification_pending';
 
+    let timelineDesc = `Hoarding photo with date & time (${formattedStamp}) uploaded.`;
+    if (verifiedOnSite) {
+      timelineDesc += ` 🟢 GPS Verified On-Site (${distanceMeters}m from billboard).`;
+    } else if (isWithinGeofence === false) {
+      timelineDesc += ` ⚠️ Geofence Alert: Captured ${distanceMeters}m away from registered coordinates.`;
+    }
+    timelineDesc += ` Customer and Admin have ${DEFAULT_VERIFICATION_WINDOW_HOURS} hours to verify before campaign activates.`;
+
     booking.timeline.push({
       event: 'phase3_proof_uploaded',
       title: 'Phase 3 (Confirmation): Proof Photo Uploaded',
-      description: `Hoarding photo with date & time (${booking.mountingDetails.proofCaptureDateTime}) uploaded. Verification window started. Customer and Admin have ${DEFAULT_VERIFICATION_WINDOW_HOURS} hours to verify before campaign activates.`,
+      description: timelineDesc,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       timestamp: now
@@ -517,7 +601,12 @@ exports.uploadMountingProof = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: 'Mounting proof uploaded! 4-hour verification window has started.',
+      message: verifiedOnSite
+        ? `Mounting proof verified on-site (${distanceMeters}m) and uploaded! 4-hour verification window has started.`
+        : 'Mounting proof uploaded! 4-hour verification window has started.',
+      distanceMeters,
+      isWithinGeofence,
+      verifiedOnSite,
       booking
     });
   } catch (error) {

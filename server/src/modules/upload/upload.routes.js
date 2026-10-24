@@ -8,6 +8,7 @@ const {
   isCloudinaryConfigured,
   uploadBufferToCloudinary,
   uploadDataUriToCloudinary,
+  uploadWatermarkedProofToCloudinary,
   deleteFromCloudinary
 } = require('../../utils/cloudinary');
 
@@ -125,7 +126,17 @@ router.post('/multiple', verifyToken, upload.array('files', 10), async (req, res
  */
 router.post('/base64', verifyToken, async (req, res, next) => {
   try {
-    const { image, folder } = req.body;
+    const {
+      image,
+      folder,
+      latitude,
+      longitude,
+      accuracy,
+      hoardingCode,
+      distanceMeters,
+      isWithinGeofence
+    } = req.body;
+
     if (!image) {
       return res.status(400).json({ success: false, message: 'Base64 image string is required.' });
     }
@@ -133,7 +144,21 @@ router.post('/base64', verifyToken, async (req, res, next) => {
     const targetFolder = folder || 'adverse/mounting_proofs';
 
     if (isCloudinaryConfigured) {
-      const result = await uploadDataUriToCloudinary(image, { folder: targetFolder });
+      const hasCoords = latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null;
+      let result;
+      if (hasCoords) {
+        result = await uploadWatermarkedProofToCloudinary(image, {
+          folder: targetFolder,
+          hoardingCode,
+          latitude,
+          longitude,
+          distanceMeters,
+          isWithinGeofence
+        });
+      } else {
+        result = await uploadDataUriToCloudinary(image, { folder: targetFolder });
+      }
+
       return res.status(200).json({
         success: true,
         provider: 'cloudinary',

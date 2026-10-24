@@ -46,7 +46,32 @@ export default function RemountingTracker({
   const [proofCaptureDateTime, setProofCaptureDateTime] = useState('');
   const [proofNotes, setProofNotes] = useState('');
   const [uploadingProof, setUploadingProof] = useState(false);
+  const [proofGps, setProofGps] = useState(null);
+  const [detectingGps, setDetectingGps] = useState(false);
   const fileInputRef = useRef(null);
+
+  const handleDetectBrowserGps = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+    setDetectingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setProofGps({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 0)
+        });
+        setDetectingGps(false);
+      },
+      (err) => {
+        alert('Could not get GPS location: ' + err.message);
+        setDetectingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   // Verification Issue Box
   const [showIssueBox, setShowIssueBox] = useState(false);
@@ -154,11 +179,18 @@ export default function RemountingTracker({
     }
     setLoadingAction(true);
     try {
-      await api.post(`/bookings/${booking._id}/remounting/${activeReq.requestId}/proof`, {
+      const res = await api.post(`/bookings/${booking._id}/remounting/${activeReq.requestId}/proof`, {
         proofPhotoUrl: proofPhotoUrl.trim(),
         proofCaptureDateTime: proofCaptureDateTime || new Date().toLocaleString('en-IN'),
-        notes: proofNotes
+        notes: proofNotes,
+        latitude: proofGps?.latitude,
+        longitude: proofGps?.longitude,
+        accuracy: proofGps?.accuracy,
+        source: proofGps ? 'web_geolocation' : 'manual'
       });
+      if (res.data?.verifiedOnSite) {
+        alert(`🟢 On-Site Verified: Remounting proof captured ${res.data.distanceMeters}m from billboard.`);
+      }
       setShowProofModal(false);
       setProofPhotoUrl('');
       setProofNotes('');

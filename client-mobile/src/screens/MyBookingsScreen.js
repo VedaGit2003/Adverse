@@ -234,6 +234,38 @@ function MobileMountingTracker({ booking, onRefresh }) {
               <View style={styles.proofDetails}>
                 <Text style={styles.proofStampLabel}>📸 CAPTURE DATE & TIME STAMP</Text>
                 <Text style={styles.proofStampVal}>{m.proofCaptureDateTime || 'Recorded at upload'}</Text>
+
+                {/* GPS Verification Badge */}
+                {m.proofGeoLocation?.verifiedOnSite ? (
+                  <View style={styles.mGeoVerifiedBadge}>
+                    <Ionicons name="shield-checkmark" size={12} color="#15803d" />
+                    <Text style={styles.mGeoVerifiedText}>
+                      🟢 On-Site Verified ({m.proofGeoLocation.distanceMetersFromHoarding}m)
+                    </Text>
+                  </View>
+                ) : m.proofGeoLocation?.isWithinGeofence === false ? (
+                  <View style={styles.mGeoWarningBadge}>
+                    <Ionicons name="warning-outline" size={12} color="#b45309" />
+                    <Text style={styles.mGeoWarningText}>
+                      ⚠️ Geofence: {m.proofGeoLocation.distanceMetersFromHoarding}m from site
+                    </Text>
+                  </View>
+                ) : null}
+
+                {m.proofGeoLocation?.latitude && m.proofGeoLocation?.longitude ? (
+                  <View style={styles.mGeoCoordsRow}>
+                    <Ionicons name="location" size={11} color="#64748b" />
+                    <Text style={styles.mGeoCoordsText}>
+                      {m.proofGeoLocation.latitude.toFixed(4)}° N, {m.proofGeoLocation.longitude.toFixed(4)}° E
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL(`https://maps.google.com/?q=${m.proofGeoLocation.latitude},${m.proofGeoLocation.longitude}`)}
+                    >
+                      <Text style={styles.mGeoMapLink}>[Map]</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
                 {m.proofNotes ? <Text style={styles.proofNotes}>"{m.proofNotes}"</Text> : null}
                 <TouchableOpacity
                   onPress={() => Linking.openURL(m.proofPhotoUrl)}
@@ -1543,6 +1575,59 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#581c87',
     fontFamily: 'monospace',
+  },
+  mGeoVerifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  mGeoVerifiedText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  mGeoWarningBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  mGeoWarningText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  mGeoCoordsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  mGeoCoordsText: {
+    fontSize: 10,
+    fontFamily: 'monospace',
+    color: '#64748b',
+  },
+  mGeoMapLink: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2563eb',
+    textDecorationLine: 'underline',
   },
   proofPhotoWrap: {
     backgroundColor: '#fff',

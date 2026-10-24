@@ -141,6 +141,17 @@ const BookingSchema = new mongoose.Schema(
       proofUploadedAt: { type: Date, default: null },
       proofNotes: { type: String, default: '' },
       proofUploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      proofGeoLocation: {
+        latitude: { type: Number, default: null },
+        longitude: { type: Number, default: null },
+        accuracy: { type: Number, default: null },
+        distanceMetersFromHoarding: { type: Number, default: null },
+        isWithinGeofence: { type: Boolean, default: null },
+        verifiedOnSite: { type: Boolean, default: false },
+        deviceAddress: { type: String, default: '' },
+        source: { type: String, enum: ['mobile_gps', 'web_geolocation', 'manual'], default: 'manual' },
+        capturedAt: { type: Date, default: null }
+      },
 
       // 4-Hour Customer/Admin Verification Window
       verificationWindowStartedAt: { type: Date, default: null },
@@ -263,6 +274,17 @@ const BookingSchema = new mongoose.Schema(
         proofUploadedAt: { type: Date, default: null },
         proofNotes: { type: String, default: '' },
         proofUploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        proofGeoLocation: {
+          latitude: { type: Number, default: null },
+          longitude: { type: Number, default: null },
+          accuracy: { type: Number, default: null },
+          distanceMetersFromHoarding: { type: Number, default: null },
+          isWithinGeofence: { type: Boolean, default: null },
+          verifiedOnSite: { type: Boolean, default: false },
+          deviceAddress: { type: String, default: '' },
+          source: { type: String, enum: ['mobile_gps', 'web_geolocation', 'manual'], default: 'manual' },
+          capturedAt: { type: Date, default: null }
+        },
         verifiedAt: { type: Date, default: null },
         verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         verificationNotes: { type: String, default: '' },

@@ -128,11 +128,89 @@ const deleteFromCloudinary = async (publicIdOrUrl) => {
   }
 };
 
+/**
+ * Upload a watermarked mounting/remounting proof to Cloudinary.
+ * Embeds GPS coordinates, timestamp, distance in meters and site verification badge.
+ * @param {string} fileOrDataUri - Base64 or local file path
+ * @param {Object} metadata - { hoardingCode, latitude, longitude, distanceMeters, isWithinGeofence, timestamp }
+ * @returns {Promise<Object>} Cloudinary upload result
+ */
+const uploadWatermarkedProofToCloudinary = async (fileOrDataUri, metadata = {}) => {
+  if (!isCloudinaryConfigured) {
+    throw new Error('Cloudinary credentials are not configured.');
+  }
+
+  const {
+    hoardingCode = 'ADVERSE',
+    latitude,
+    longitude,
+    distanceMeters,
+    timestamp = new Date(),
+    isWithinGeofence
+  } = metadata;
+
+  const dateStr = new Date(timestamp).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+
+  let stampText = `ADVERSE PROOF | ${hoardingCode}`;
+  if (latitude !== undefined && longitude !== undefined && latitude !== null && longitude !== null) {
+    const latStr = Number(latitude).toFixed(4);
+    const lngStr = Number(longitude).toFixed(4);
+    const distStr = distanceMeters !== undefined && distanceMeters !== null ? `${distanceMeters}m from site` : '';
+    const statusStr = isWithinGeofence === true ? 'VERIFIED ON-SITE' : (isWithinGeofence === false ? 'OUTSIDE GEOFENCE' : 'RECORDED');
+    stampText = `ADVERSE ${statusStr} | LAT ${latStr} LNG ${lngStr} | ${distStr ? distStr + ' | ' : ''}${dateStr}`;
+  } else {
+    stampText = `ADVERSE PROOF | ${hoardingCode} | ${dateStr}`;
+  }
+
+  const safeText = encodeURIComponent(stampText.replace(/,/g, ' ').replace(/\//g, '-'));
+
+  const uploadOptions = {
+    folder: metadata.folder || 'adverse/mounting_proofs',
+    resource_type: 'auto',
+    transformation: [
+      { width: 1400, crop: 'limit' },
+      {
+        overlay: {
+          font_family: 'Arial',
+          font_size: 20,
+          font_weight: 'bold',
+          text: safeText
+        },
+        color: '#FFFFFF',
+        background: '#000000B3',
+        gravity: 'south',
+        y: 16,
+        flags: 'layer_apply'
+      }
+    ]
+  };
+
+  try {
+    return await cloudinary.uploader.upload(fileOrDataUri, uploadOptions);
+  } catch (err) {
+    console.warn('[Cloudinary] Watermark overlay transform failed, uploading clean original as fallback:', err.message);
+    return await cloudinary.uploader.upload(fileOrDataUri, {
+      folder: metadata.folder || 'adverse/mounting_proofs',
+      resource_type: 'auto',
+      transformation: [{ width: 1400, crop: 'limit' }]
+    });
+  }
+};
+
+
 module.exports = {
   cloudinary,
   isCloudinaryConfigured,
   uploadBufferToCloudinary,
   uploadDataUriToCloudinary,
+  uploadWatermarkedProofToCloudinary,
   getPublicIdFromUrl,
   deleteFromCloudinary
 };
