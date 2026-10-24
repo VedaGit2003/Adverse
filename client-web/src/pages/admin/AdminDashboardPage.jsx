@@ -162,11 +162,56 @@ export default function AdminDashboardPage() {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const fetchPlatformSettings = async () => {
+    try {
+      const res = await api.get('/settings');
+      if (res.data?.success && res.data?.settings) {
+        setPlatformSettings(res.data.settings);
+      }
+    } catch (err) {
+      console.warn('Could not load platform settings:', err.message);
+    }
+  };
+
+  const handleToggleGpsFeature = async (newVal) => {
+    setUpdatingSettings(true);
+    try {
+      const res = await api.put('/settings', {
+        gpsVerificationEnabled: newVal
+      });
+      if (res.data?.success) {
+        setPlatformSettings(res.data.settings);
+        showToast(res.data.message || `GPS Geofence switched ${newVal ? 'ON' : 'OFF'}`);
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update GPS feature setting', 'error');
+    } finally {
+      setUpdatingSettings(false);
+    }
+  };
+
+  const handleSaveAllSettings = async (e) => {
+    e?.preventDefault?.();
+    setUpdatingSettings(true);
+    try {
+      const res = await api.put('/settings', platformSettings);
+      if (res.data?.success) {
+        setPlatformSettings(res.data.settings);
+        showToast(res.data.message || 'Platform settings updated successfully!');
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to save settings', 'error');
+    } finally {
+      setUpdatingSettings(false);
+    }
+  };
+
   const fetchAllData = async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
 
     try {
+      fetchPlatformSettings();
       const [metricsRes, hoardingsRes, bookingsRes, usersRes, sellersRes, coverReqsRes, modReqsRes] = await Promise.all([
         api.get('/admin/metrics'),
         api.get('/admin/hoardings'),
